@@ -93,8 +93,8 @@ class HansardTuhingaScraper:
                 flag = False
 
                 for strong in strong_tags:
-                    string = strong.string
-                    if not flag and string and re.search(r'[a-zA-Z]*', string):
+                    string = strong.extract().string
+                    if not flag and string and re.search(r'[a-zA-Z]{4,}', string):
                         ingoa_kaikōrero = string.strip()
                         flag = True
 
@@ -109,7 +109,7 @@ class HansardTuhingaScraper:
                 # heMāori = quant(paragraph)
                 heMāori = 51
 
-                if kōrero_waenga:
+                if re.search(r'[a-zA-Z]', kōrero_waenga):
                     paragraph_count += 1
                     print('{}: {}\nsection {}, paragraph {}, {}%\nname:{}\n{}\n'.format(
                         wā, title, section_count,
@@ -155,7 +155,7 @@ def aggregate_hansard_corpus(doc_urls):
     doc_urls = doc_urls
     transcripts = []
 
-    filename = "hansardcorpus2.csv"
+    filename = "hansardcorpus.csv"
 
     with open(filename, 'w') as kiwaho:
         hansard_csv = csv.writer(kiwaho)
