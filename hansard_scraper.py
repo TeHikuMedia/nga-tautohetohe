@@ -1,9 +1,11 @@
 # import libraries
 import csv
-from urllib.request import urlopen
 import re
+from collections import deque
+from urllib.request import urlopen
 from bs4 import BeautifulSoup as bs
 from datetime import datetime
+from taumahi import tatau_tupu
 
 hansard_url = 'https://www.parliament.nz'
 hansard_meta_url = '{}{}'.format(hansard_url, '/en/document/')
@@ -74,6 +76,10 @@ class HansardTuhingaScraper:
 
         transcripts = []
 
+        teReo_size = 0
+        total_size = 0
+        awaiting_teReo = None
+
         section_count = 0
 
         for section in self.kōrero_hupo:
@@ -94,7 +100,7 @@ class HansardTuhingaScraper:
 
                 for strong in strong_tags:
                     string = strong.extract().string
-                    if not flag and string and re.search(r'[a-zA-Z]{4,}', string):
+                    if not flag and string and re.search(r'[a-zA-Z]{5,}', string):
                         ingoa_kaikōrero = string.strip()
                         flag = True
 
@@ -106,38 +112,78 @@ class HansardTuhingaScraper:
                     if p:
                         kōrero_waenga = p
 
-                # heMāori = quant(paragraph)
-                heMāori = 51
-
                 if re.search(r'[a-zA-Z]', kōrero_waenga):
                     paragraph_count += 1
-                    print('{}: {}\nsection {}, paragraph {}, {}%\nname:{}\n{}\n'.format(
-                        wā, title, section_count,
-                        paragraph_count, heMāori, ingoa_kaikōrero, kōrero_waenga))
-                    transcripts.append(Transcript(doc_url='{}{}'.format(hansard_url, self.doc_url),
-                                                  wā=wā,
-                                                  title=title,
-                                                  section=section_count,
-                                                  paragraph=paragraph_count,
-                                                  ingoa_kaikōrero=ingoa_kaikōrero,
-                                                  heMāori=heMāori,
-                                                  kōrero_waenga=kōrero_waenga))
-        return transcripts
+                    num_Māori, num_non_Māori = tatau_tupu(paragraph)
+
+                    teReo_size += num_Māori
+                    total_size += num_non_Māori
+
+                    heMāori = num_Māori / num_non_Māori
+
+                    save_corpus = heMāori > 50
+                    if not save_corpus:
+                        save_corpus = re.match(
+                            r'\[Authorised Te Reo text', kōrero_waenga)
+                        if save_corpus:
+                            awaiting_teReo = True
+
+                    if save_corpus:
+                        print('{}: {}\nsection {}, paragraph {}, {}%\nname:{}\n{}\n'.format(
+                            wā, title, section_count,
+                            paragraph_count, heMāori, ingoa_kaikōrero, kōrero_waenga))
+                        transcripts.append(Transcript(doc_url='{}{}'.format(hansard_url, self.doc_url),
+                                                      wā=wā,
+                                                      title=title,
+                                                      section=section_count,
+                                                      paragraph=paragraph_count,
+                                                      ingoa_kaikōrero=ingoa_kaikōrero,
+                                                      heMāori=heMāori,
+                                                      kōrero_waenga=kōrero_waenga))
+        return transcripts, teReo_size, total_size, awaiting_teReo
 
 
 def scrape_Hansard_URLs():
-    list_url = '{}{}'.format(
-        hansard_url, '/en/pb/hansard-debates/rhr/')
-
+    list_url = '{}{}'.format(hansard_url, '/en/pb/hansard-debates/rhr/')
     rhr_soup = bs(urlopen(list_url), 'html.parser')
+    filename = 'urlindex.csv’
 
+    has_header = False
     doc_url_list = []
 
+    with open(filename, 'r') as url_file:
+        has_header = csv.Sniffer().has_header(url_file)
+        if has_header:
+            for row in csv.DictReader(url_file):
+                doc_url_list.append(row['url'])
+
+    if not has_header:
+        with open(filename, 'w') as url_file:
+            head_writer = csv.writer(url_file)
+            head_writer.writerow(['Date retreived', 'url'])
+
+    last_url = doc_url_list[-1]
+    new_list = get_new_urls(last_url)
+
+    with open(filename, 'a') as url_file:
+        for url in reversed(new_list):
+            doc_url_list.append(url[1])
+            url_writer.writerow(url)
+
+    return doc_url_list
+
+
+def get_new_urls(last_url):
+    new_list = []
     while True:
+        retreivedtime = datetime.now()
         for h2 in rhr_soup.select('ul.hansard__list h2'):
-            doc_url = h2.a['href']
-            print(doc_url)
-            doc_url_list.append(doc_url)
+            new_url = h2.a['href']
+            if new_url is last_url:
+                return new_list
+            else:
+                print(new_url)
+                new_list.append([retreivedtime, new_url])
 
         next_page = rhr_soup.find(
             'li', attrs={'class', 'pagination__next'})
@@ -147,38 +193,89 @@ def scrape_Hansard_URLs():
                 'a')['href'])
             rhr_soup = bs(urlopen(next_url), 'html.parser')
         else:
-            break
-    return doc_url_list
+            return new_list
 
 
 def aggregate_hansard_corpus(doc_urls):
-    doc_urls = doc_urls
     transcripts = []
 
-    filename = "hansardcorpus.csv"
+    corpusfilename = 'hansardcorpus.csv'
+    recordfilename = 'hansardrecord.csv'
 
-    with open(filename, 'w') as kiwaho:
-        hansard_csv = csv.writer(kiwaho)
-        # write the header
-        hansard_csv.writerow([
-            'Hansard document url',
-            'wā',
-            'title',
-            'section number',
-            'utterance number',
-            'ingoa kaikōrero',
-            'is Māori (%)',
-            'kōrero waenga'
-        ])
-        for doc_url in doc_urls:
-            transcripts = HansardTuhingaScraper(
-                doc_url).horoi_transcript_factory()
-            for transcript in transcripts:
-                hansard_csv.writerow(transcript.listify())
+    record_has_header = False
+    record_list = []
+    waiting_for_reo_list = []
 
-            print('---\n')
+    with open(recordfilename, 'r') as record_file:
+        record_has_header = csv.Sniffer().has_header(record_file)
+        if record_has_header:
+            rowcount = 0
+            for row in csv.DictReader(record_file):
+                record_list.append(row)
+                rowcount + = 1
+                if row['awaiting authorised reo'] is True:
+                    waiting_for_reo_list.append(rowcount)
 
-            transcripts.append(transcripts)
+    if not record_has_header:
+        with open(recordfilename, 'w') as record_file:
+            head_writer = csv.writer(record_file)
+            head_writer.writerow([
+                'Date retreived',
+                'Hansard document url',
+                'wā',
+                'title',
+                'Te Reo length',
+                'total length',
+                'is Māori (%)',
+                'awaiting authorised reo'
+            ])
+
+    corpus_has_header = False
+    record_list = []
+
+    with open(corpusfilename, 'r') as corpus:
+        corpus_has_header = csv.Sniffer().has_header(corpus)
+        if corpus_has_header:
+            for row in csv.DictReader(record_file):
+                record_list.append(row)
+
+    if not corpus_has_header:
+        with open(corpusfilename, 'w') as corpus:
+            head_writer = csv.writer(corpus)
+            head_writer.writerow([
+                'Hansard document url',
+                'wā',
+                'title',
+                'section number',
+                'utterance number',
+                'ingoa kaikōrero',
+                'is Māori (%)',
+                'kōrero waenga'
+            ])
+
+    last_record_url = record_list[-1]['Hansard document url']
+    remaining_urls = doc_urls[doc_urls.index(last_record_url) + 1:]get_more_urls(last_record_url, doc_urls)
+
+    with open(recordfilename, 'a') as record:
+        with open(corpusfilename, 'a') as kiwaho:
+            record_csv = csv.writer(record)
+            hansard_csv = csv.writer(kiwaho)
+
+            for doc_url in remaining_urls:
+                corpus_writer(doc_url, record_csv, hansard_csv)
+
+                print('---\n')
+
+
+def corpus_writer(doc_url, record_csv, hansard_csv):
+    transcripts, teReo_size, total_size, awaiting_teReo = HansardTuhingaScraper(
+        doc_url).horoi_transcript_factory()
+
+    record_csv.writerow([datetime.now()] + transcripts[0].listify[0:3] + [
+                        teReo_size, total_size, teReo_size / total_size, awaiting_teReo])
+
+    for transcript in transcripts:
+        hansard_csv.writerow(transcript.listify())
 
 
 def main():
