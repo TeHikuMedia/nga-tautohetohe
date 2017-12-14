@@ -88,7 +88,7 @@ def tuhi_puta_tuhinga(args, kupu_hou):
 def tatau_tupu(text):
     kupu_tūtira_pīki = auaha_kupu_tūtira(text)
     kupu_hou = poro_tūtira(kupu_tūtira_pīki)
-    return len(kupu_hou), len(kupu_tūtira_pīki)
+    return len(kupu_hou), len(kupu_tūtira_pīki), kupu_tūtira_pīki
 
 
 def dictionary_check_word(kupu_hou, ignore_tohutō=False):

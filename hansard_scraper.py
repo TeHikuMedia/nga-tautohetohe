@@ -1,6 +1,7 @@
 # import libraries
 import csv
 import re
+import time
 from pathlib import Path
 from urllib.request import urlopen
 from bs4 import BeautifulSoup as bs
@@ -44,22 +45,39 @@ class HansardTuhingaScraper:
 
     def hanga_hupo(self):
         # query the website and parse the returned html using beautiful soup
-        self.soup = bs(urlopen('{}{}'.format(
-            hansard_url, self.doc_url)), 'html.parser')
+
+        doc_id = self.doc_url.split('/')[6]
+        alternative_URL = '{}{}'.format(hansard_meta_url, doc_id)
+        get_stuff = ''
+        exception_flag = None
+
+        try:
+            get_stuff = urlopen('{}{}'.format(
+                hansard_url, self.doc_url))
+        except Exception as e:
+            print(e, '\nTrying alternative URL...')
+            try:
+                get_stuff = urlopen(alternative_URL)
+                exception_flag = True
+                print('\nSuccess!\n')
+            except Exception as e:
+                raise Exception(e, '\nCould not find data')
+
+        self.soup = bs(get_stuff, 'html.parser')
 
         self.retreived = datetime.now()
 
-        doc_id = self.doc_url.split('/')[6]
-
-        if re.match(r'\d', doc_id):
+        if exception_flag:
+            self.kōrero_hupo = self.soup.find('div', attrs={'class': 'section'}).select(
+                'div.section > div.section')
+        elif re.match(r'\d', doc_id):
             self.kōrero_hupo = self.soup.select('div.Hansard > div')
         else:
             self.kōrero_hupo = self.soup.find_all(
                 'div', attrs={'class': 'section'})
 
         # Make soup from hansard metadata
-        meta_url = '{}{}{}'.format(
-            hansard_meta_url, doc_id, '/metadata')
+        meta_url = '{}{}'.format(alternative_URL, '/metadata')
         self.metasoup = bs(urlopen(meta_url), 'html.parser').table
 
     def horoi_transcript_factory(self):
@@ -86,7 +104,10 @@ class HansardTuhingaScraper:
 
             ingoa_kaikōrero = ''
 
-            for paragraph in section.find_all('p'):
+            p_list = section.find_all('p')
+            print('Paragraphs =', len(p_list))
+
+            for paragraph in p_list:
 
                 # print('paragraph: ', paragraph_count)
 
@@ -110,7 +131,7 @@ class HansardTuhingaScraper:
 
                 if re.search(r'[a-zA-Z]', kōrero_waenga):
                     paragraph_count += 1
-                    num_Māori, size = tatau_tupu(kōrero_waenga)
+                    num_Māori, size, kupu_list = tatau_tupu(kōrero_waenga)
 
                     teReo_size += num_Māori
                     total_size += size
@@ -124,6 +145,9 @@ class HansardTuhingaScraper:
                             r'\[Authorised Te Reo text', kōrero_waenga)
                         if save_corpus:
                             awaiting_teReo = True
+                    elif size <= 10:
+                        save_corpus = not any(word in kōrero_waenga for word in [
+                            'take', 'Take', 'too', 'Too', 'woo', 'hoo', 'No', 'no', 'Ha', 'ha', 'name', 'one', 'where', 'who', 'We', 'we', 'Nowhere', 'nowhere', 'are', 'he', 'hero', 'here', 'none', 'whoa'])
 
                     if save_corpus:
                         print('{}: {}\nsection {}, paragraph {}, Maori = {}%\nname:{}\n{}\n'.format(
@@ -137,6 +161,7 @@ class HansardTuhingaScraper:
                                                       ingoa_kaikōrero=ingoa_kaikōrero,
                                                       heMāori=heMāori,
                                                       kōrero_waenga=kōrero_waenga))
+        print('Time:', self.retreived)
         doc_record = [self.retreived, self.doc_url, wā, title, teReo_size,
                       total_size, teReo_size / total_size, awaiting_teReo]
         return transcripts, doc_record
@@ -283,11 +308,14 @@ def corpus_writer(doc_url, record_csv, hansard_csv):
 
 def main():
 
+    start_time = time.time()
+
     hansard_doc_urls = scrape_Hansard_URLs()
 
     aggregate_hansard_corpus(hansard_doc_urls)
 
     print('Corpus compilation successful\n')
+    print("\n--- Job took %s seconds ---\n" % (time.time() - start_time))
 
 
 if __name__ == '__main__':
