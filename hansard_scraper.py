@@ -12,31 +12,6 @@ hansard_url = 'https://www.parliament.nz'
 hansard_meta_url = '{}{}'.format(hansard_url, '/en/document/')
 
 
-class Transcript:
-    def __init__(self, doc_url, wā, title, section, paragraph, ingoa_kaikōrero, heMāori, kōrero_waenga):
-        ''' Generate a transcript object with basic params '''
-        self.doc_url = doc_url
-        self.wā = wā
-        self.title = title
-        self.section = section
-        self.paragraph = paragraph
-        self.heMāori = heMāori
-        self.ingoa_kaikōrero = ingoa_kaikōrero
-        self.kōrero_waenga = kōrero_waenga
-
-    def listify(self):
-        return [
-            self.doc_url,
-            self.wā,
-            self.title,
-            self.section,
-            self.paragraph,
-            self.ingoa_kaikōrero,
-            self.heMāori,
-            self.kōrero_waenga
-        ]
-
-
 class HansardTuhingaScraper:
     def __init__(self, doc_url):
         ''' Set up our tuhituhi CorpusCollector with basic params '''
@@ -90,6 +65,7 @@ class HansardTuhingaScraper:
 
         transcripts = []
         teReo_size = 0
+        ambiguous_size = 0
         total_size = 0
         awaiting_teReo = None
         section_count = 0
@@ -131,13 +107,14 @@ class HansardTuhingaScraper:
 
                 if re.search(r'[a-zA-Z]', kōrero_waenga):
                     paragraph_count += 1
-                    num_Māori, size = tatau_tupu(kōrero_waenga)
+                    num_Māori, num_ambiguous, size = tatau_tupu(kōrero_waenga)
 
                     teReo_size += num_Māori
+                    ambiguous_size += num_ambiguous
                     total_size += size
 
                     if size:
-                        heMāori = (num_Māori / size) * 100
+                        heMāori = (num_Māori / (size - num_ambiguous)) * 100
 
                     save_corpus = heMāori > 50
                     if not save_corpus:
@@ -153,16 +130,10 @@ class HansardTuhingaScraper:
                         print('{}: {}\nsection {}, paragraph {}, Maori = {}%\nname:{}\n{}\n'.format(
                             wā, title, section_count,
                             paragraph_count, heMāori, ingoa_kaikōrero, kōrero_waenga))
-                        transcripts.append(Transcript(doc_url=doc_url,
-                                                      wā=wā,
-                                                      title=title,
-                                                      section=section_count,
-                                                      paragraph=paragraph_count,
-                                                      ingoa_kaikōrero=ingoa_kaikōrero,
-                                                      heMāori=heMāori,
-                                                      kōrero_waenga=kōrero_waenga))
+                        transcripts.append([doc_url, wā, title, section_count, paragraph_count,
+                                            ingoa_kaikōrero, num_Māori, num_ambiguous, heMāori, kōrero_waenga])
         print('Time:', self.retreived)
-        doc_record = [self.retreived, self.doc_url, wā, title, teReo_size,
+        doc_record = [self.retreived, self.doc_url, wā, title, teReo_size, ambiguous_size,
                       total_size, teReo_size / total_size, awaiting_teReo]
         return transcripts, doc_record
 
@@ -251,6 +222,7 @@ def aggregate_hansard_corpus(doc_urls):
                 'wā',
                 'title',
                 'Te Reo length',
+                'ambiguous size'
                 'total length',
                 'is Māori (%)',
                 'awaiting authorised reo'
@@ -273,6 +245,9 @@ def aggregate_hansard_corpus(doc_urls):
                 'section number',
                 'utterance number',
                 'ingoa kaikōrero',
+                'Te Reo length',
+                'ambiguous size'
+                'total length',
                 'is Māori (%)',
                 'kōrero waenga'
             ])
@@ -303,7 +278,7 @@ def corpus_writer(doc_url, record_csv, hansard_csv):
     record_csv.writerow(doc_record)
     if transcripts:
         for transcript in transcripts:
-            hansard_csv.writerow(transcript.listify())
+            hansard_csv.writerow(transcript)
 
 
 def main():

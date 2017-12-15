@@ -26,7 +26,7 @@ def clean_csv(corpusinputname, cleancorpusoutput):
 
 
 def is_te_reo(kōrero_waenga):
-    num_Māori, size = tatau_tupu(kōrero_waenga)
+    num_Māori, num_ambiguous, size = tatau_tupu(kōrero_waenga)
 
     if size:
         heMāori = (num_Māori / size) * 100
