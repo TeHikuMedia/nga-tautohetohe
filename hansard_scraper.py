@@ -131,7 +131,7 @@ class HansardTuhingaScraper:
 
                 if re.search(r'[a-zA-Z]', kōrero_waenga):
                     paragraph_count += 1
-                    num_Māori, size, kupu_list = tatau_tupu(kōrero_waenga)
+                    num_Māori, size = tatau_tupu(kōrero_waenga)
 
                     teReo_size += num_Māori
                     total_size += size

@@ -3,3 +3,4 @@ __pycache__/*
 *.pyc
 hansardcorpus.csv
 hansardrecord.csv
+cleancorpus.csv
