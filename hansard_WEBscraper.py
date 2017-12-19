@@ -66,7 +66,7 @@ class HansardTuhingaScraper:
         transcripts = []
         teReo_size = 0
         ambiguous_size = 0
-        total_size = 0
+        other_size = 0
         awaiting_teReo = None
         section_count = 0
 
@@ -116,14 +116,14 @@ class HansardTuhingaScraper:
 
                     if not save_corpus:
                         awaiting_teReo = re.match(
-                            r'\[Authorised Te Reo text', text)
+                            r'\[Authorised Te Reo text', kōrero_waenga)
                         if awaiting_teReo:
                             save_corpus = True
 
                     if save_corpus:
                         print('{}: {}\nsection {}, paragraph {}, Maori = {}%\nname:{}\n{}\n'.format(
                             wā, title, section_count,
-                            paragraph_count, heMāori, ingoa_kaikōrero, kōrero_waenga))
+                            paragraph_count, numbers[3], ingoa_kaikōrero, kōrero_waenga))
                         transcripts.append([doc_url, wā, title, section_count, paragraph_count,
                                             ingoa_kaikōrero] + numbers + [kōrero_waenga])
         print('Time:', self.retreived)
