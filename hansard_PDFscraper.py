@@ -5,12 +5,36 @@ import time
 from datetime import datetime
 import re
 from taumahi import kupu_ratios
+from os import listdir
+from os.path import isfile, join
+
+
+enumer
+
+
+def read_txt_files(dirpath):
+    for f in listdir(dirpath) if isfile(join(dirpath, f)) and f.endswith('.txt'):
+        with open(f, 'r') as hansard_txt:
+            vol = []
+            page = []
+            for line in hansard_txt:
+                if line.startswith('\f'):
+                    vol.append(page)
+                    process(page)
+                    page = []
+                page.append(line)
+
+
+def process(page):
+    pattern = r''
+    re.match(pattern=pattern, page[0])
+    pass
 
 
 class HansardTuhingaScraper:
-    def __init__(self, doc_url):
+    def __init__(self, txtfile):
         ''' Set up our tuhituhi CorpusCollector with basic params '''
-        self.doc_url = doc_url
+        self.txtfile = txtfile
         self.hanga_hupo()
 
     def hanga_hupo(self):
@@ -131,7 +155,7 @@ def scrape_Hansard_URLs():
     filename = 'urlindex.csv'
 
     has_header = False
-    doc_url_list = []
+    txt_path_list = []
 
     if Path(filename).exists():
         with open(filename, 'r') as url_file:
@@ -157,32 +181,8 @@ def scrape_Hansard_URLs():
     return doc_url_list
 
 
-def get_new_urls(last_url):
-    rhr_soup = bs(urlopen('{}{}'.format(
-        hansard_url, '/en/pb/hansard-debates/rhr/')), 'html.parser')
-
-    new_list = []
-    while True:
-        print('\nChecking for new kōrerorero Hansard\n')
-
-        retreivedtime = datetime.now()
-        for h2 in rhr_soup.select('ul.hansard__list h2'):
-            new_url = h2.a['href']
-            if new_url == last_url:
-                return new_list
-            else:
-                print(new_url)
-                new_list.append([retreivedtime, new_url])
-
-        next_page = rhr_soup.find(
-            'li', attrs={'class', 'pagination__next'})
-
-        if next_page:
-            next_url = '{}{}'.format(hansard_url, next_page.find(
-                'a')['href'])
-            rhr_soup = bs(urlopen(next_url), 'html.parser')
-        else:
-            return new_list
+def get_file_list(dirpath):
+    return [f for f in listdir(dirpath) if isfile(join(dirpath, f)) and f.endswith('.txt')]
 
 
 def aggregate_hansard_corpus(doc_urls):
@@ -273,6 +273,8 @@ def corpus_writer(doc_url, record_csv, hansard_csv):
 def main():
 
     start_time = time.time()
+
+    read_txt_files(dirpath='1987-2002')
 
     hansard_doc_urls = scrape_Hansard_URLs()
 

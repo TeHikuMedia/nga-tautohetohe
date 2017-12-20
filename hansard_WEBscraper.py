@@ -128,7 +128,7 @@ class HansardTuhingaScraper:
                                             ingoa_kaikōrero] + numbers + [kōrero_waenga])
         print('Time:', self.retreived)
         doc_record = [self.retreived, self.doc_url, wā, title, teReo_size, ambiguous_size,
-                      other_size, teReo_size / other_size, awaiting_teReo]
+                      other_size, 100 * teReo_size / (teReo_size + other_size), awaiting_teReo]
         return transcripts, doc_record
 
 
@@ -216,7 +216,7 @@ def aggregate_hansard_corpus(doc_urls):
                 'wā',
                 'title',
                 'Te Reo length',
-                'Ambiguous length'
+                'Ambiguous length',
                 'Other length',
                 'is Māori (%)',
                 'awaiting authorised reo'
@@ -240,7 +240,7 @@ def aggregate_hansard_corpus(doc_urls):
                 'utterance number',
                 'ingoa kaikōrero',
                 'Te Reo length',
-                'Ambiguous length'
+                'Ambiguous length',
                 'Other length',
                 'is Māori (%)',
                 'kōrero waenga'
