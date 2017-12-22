@@ -151,9 +151,13 @@ def get_speeches(txt, kaikōrero=None):
             speeches.append(Speech(new_kaikōrero.group(2), paragraphs))
             paragraphs = []
 
-    tereo_stats = rate(txt)
+    return speeches, [Paragraph(txt, rate_paragraph(txt))] + paragraphs
 
-    return speeches, [txt] + paragraphs
+
+def rate_paragraph(txt):
+    condition, ratios = kupu_ratios(txt)
+
+    return ratio[]
 
 
 def process(page):
