@@ -9,20 +9,151 @@ from os import listdir
 from os.path import isfile, join
 
 
-enumer
+titles = '(([-~\'`() a-zA-Z]*\n)*)'
+speaker = '[^:\n]*'
+sentence_end = ['[.!?]', '[\'`]*']
+page_endings = '(\n?\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)'
+
+# Regex to replace page breaks with new line
+page_break = re.compile(pattern=page_endings)
+
+# Regex to replace all tilda_vowels with macron vowels
+vowel_map = {'~a': 'ā', '~e': 'ē', '~i': 'ī', '~o': 'ō', '~u': 'ū'}
+tilda_vowels = re.compile('~a|~e|~i|~o|~u')
+
+# Regex to look for meeting date then split into date-debate key-value map
+debate_date = re.compile(pattern=r'[A-Z]{6,9}, \d{1,2} [A-Z]{3,9} \d{4}')
+
+# Regex for splittting paragraphs
+paragraph_signal = '({}+|-+){}\n'.format(sentence_end[0], sentence_end[1])
+new_paragraph = re.compile(pattern=paragraph_signal)
+
+# Regex to check each paragrah for a new speaker, extract and replace with empty string
+speaker_pattern = '{t}({s}|([^,\n]*\n){s}):'.format(t=titles, s=speaker)
+new_speaker = re.compile(pattern=speaker_pattern)
+
+# Regec to split paragraph into sentences
+sentence_signal = '{}{} '.format(sentence_end[0], sentence_end[1])
+new_sentence = re.compile(pattern=sentence_signal)
+
+# ([.!?]+|-+)[\'`]*\n([-~\'`() a-zA-Z]*\n)*(\n?\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)?([-~\'`() a-zA-Z]*\n)*([^:\n]*:|[^,\n]*\n[^:\n]*:)
 
 
 def read_txt_files(dirpath):
+    volumes = {}
     for f in listdir(dirpath) if isfile(join(dirpath, f)) and f.endswith('.txt'):
         with open(f, 'r') as hansard_txt:
+            txt = tilda_vowels.(tilda2tohutō, page_break.sub('\n', hansard_txt.read()))
+            volumes[f] = get_daily_debates(txt)
+
             vol = []
             page = []
+            speeches = []
+            paragraph = []
+            colon_index = 0
+            day = ''
+            ingoa_kaikōrero = ''
+            fullstop_flag = True
+
             for line in hansard_txt:
+                string = line.strip()
+                c, n = 0, 0
+
+                if debate_date.match(string):
+                    day = string
+                    continue
+
+                for char in re.findall('\w', line) if char:
+                    if capitals.match(char):
+                        c += 1
+                    if fullstop_flag and char is ':':
+                        colon_index = n
+                        ingoa_kaikōrero = line[0:n]
+                    n += 1
+                if c == n:
+                    continue
+
+                for strong in strong_tags:
+                    string = strong.extract().string
+                    if not flag and string and re.search(r'[a-zA-Z]{5,}', string):
+                        ingoa_kaikōrero = string.strip()
+                        fullstop_flag = True
+
+                stripped = line.strip()
+                paragraph.append(line)
+                if stripped.endswith('.'):
+                    speeches.append(paragraph)
+                    paragraph = []
+
                 if line.startswith('\f'):
                     vol.append(page)
                     process(page)
                     page = []
                 page.append(line)
+
+
+def tilda2tohutō(char):
+    return vowel_map[char]
+
+
+def get_daily_debates(txt, date=None):
+    if not date:
+        date = debate_date.search(txt)
+        txt = txt[date.end():]
+
+    debate_map = {}
+    nextdate = debate_date.search(txt)
+    if nextdate:
+        debate_map = get_daily_debates(txt=txt[nextdate.end():], date=nextdate)
+        # can call a cleaning function on the method here to create clean txt sublists
+        cleaned_collection = clean_txt(txt[:nextdate.start()])
+
+    debate_map[date] = cleaned_collection
+    return debate_map
+
+
+def clean_txt(txt):
+    speeches = get_speeches(txt)
+
+    # Regex to check each paragrah for a new speeker, extract and replace with empty string
+    speaker_pattern = '{t}({s}|[^,\n]*\n{s})'.format(t=titles, s=speaker)
+    new_speaker = re.compile(pattern=speaker_pattern)
+
+    # Regec to split paragraph into sentences
+    sentence_signal = '{}{} '.format(sentence_end[0], sentence_end[1])
+    new_sentence = re.compile(pattern=sentence_signal)
+
+
+def get_speeches(txt):
+    speech, remaining_txt = get_paragraphs(txt)
+
+    if remaining_txt:
+        speeches = get_speeches(remaining_txt)
+
+    return speeches
+
+
+def get_speeches(txt, kaikōrero=None):
+    paragraph_end = new_paragraph.search(txt)
+    remaining_txt = None
+
+    if paragraph_end:
+        txt = [txt[:paragraph_end.start() + 1]]
+        remaining_txt = txt[paragraph_end.end():]
+
+    speeches = []
+    paragraphs = []
+
+    if remaining_txt:
+        speeches, paragraphs = get_speeches(remaining_txt)
+        new_kaikōrero = new_speaker.match(remaining_txt)
+        if new_kaikōrero:
+            speeches.append(Speech(new_kaikōrero.group(2), paragraphs))
+            paragraphs = []
+
+    tereo_stats = rate(txt)
+
+    return speeches, [txt] + paragraphs
 
 
 def process(page):
@@ -268,6 +399,24 @@ def corpus_writer(doc_url, record_csv, hansard_csv):
     if transcripts:
         for transcript in transcripts:
             hansard_csv.writerow(transcript)
+
+
+class Speech:
+    """docstring for Speech."""
+
+    def __init__(self, kaikōrero, paragraphs):
+        self.kaikōrero = kaikōrero
+        self.paragraphs = paragraphs
+
+
+class Paragraph:
+    """docstring for Speech."""
+
+    def __init__(self, txt, num_Māori, num_ambiguous, num_other):
+        self.num_Māori = num_Māori
+        self.num_ambiguous = num_ambiguous
+        self.num_other = num_other
+        self.percentage = num_Māori / (num_Māori + num_other)
 
 
 def main():
