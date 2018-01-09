@@ -4,7 +4,7 @@ from pathlib import Path
 import time
 from datetime import datetime
 import re
-from taumahi import kupu_ratios
+from taumahi import kupu_ratios, get_percentage
 from os import listdir
 from sys import getrecursionlimit, setrecursionlimit
 from os.path import isfile, join
@@ -12,15 +12,16 @@ from os.path import isfile, join
 
 titles = '(([-~\'`() a-zA-Z]*\n)*)'
 speaker = '[^:\n]*'
+name_behaviour = '((\d{1,2}\. )?(Rt\.? )?(Hon\. )?)?([A-Z]([a-z]+|[A-Z]+|\.?))([ -][A-Z]([a-z]+|[A-Z]+|\.?))+'
 sentence_end = ['[.!?]', '[\'`]*']
-page_endings = '(\n?\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)'
+page_endings = '(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)'
 
 # Regex to replace page breaks with new line
 page_break = re.compile(pattern=page_endings)
 
 # Regex to replace all tilda_vowels with macron vowels
-vowel_map = {'~a': 'ā', '~e': 'ē', '~i': 'ī', '~o': 'ō', '~u': 'ū'}
-tilda_vowels = re.compile('~a|~e|~i|~o|~u')
+vowel_map = {'a': 'ā', 'e': 'ē', 'i': 'ī', 'o': 'ō', 'u': 'ū'}
+vowels = re.compile('(~|\[A macron\])([aeiouAEIOU])')
 
 # Regex to look for meeting date then split into date-debate key-value map
 debate_date = re.compile(pattern=r'[A-Z]{6,9}, \d{1,2} [A-Z]{3,9} \d{4}')
@@ -63,8 +64,9 @@ def process_txt_files(dirpath):
         index_csv.writerow([
             'Hansard volume',
             'Rā',
+            'Num paragraphs',
             'Te Reo length',
-            'Ambiguous length'
+            'Ambiguous length',
             'Other length',
             'is Māori (%)',
         ])
@@ -73,11 +75,11 @@ def process_txt_files(dirpath):
             corpus_csv.writerow([
                 'Hansard volume',
                 'Rā',
-                'Speaker turn',
                 'Ingoa kaikōrero',
+                'Speaker turn',
                 'Paragraph number',
                 'Te Reo length',
-                'Ambiguous length'
+                'Ambiguous length',
                 'Other length',
                 'Is Māori (%)',
                 'Kōrero'
@@ -86,8 +88,9 @@ def process_txt_files(dirpath):
             for f in get_file_list(dirpath):
                 print('\nProcessing {}:\n'.format(f))
                 with open('{}/{}'.format(dirpath, f), 'r') as hansard_txt:
-                    txt = tilda_vowels.sub(
+                    txt = vowels.sub(
                         tilda2tohutō, page_break.sub('\n', hansard_txt.read()))
+                    txt = re.sub(r'\[[^\]]*]', '', txt)
                     tuhituhikifile(f, get_daily_debates(
                         txt), index_csv, corpus_csv)
                 print('{} processed\n'.format(f))
@@ -100,8 +103,8 @@ def get_file_list(dirpath):
     return files
 
 
-def tilda2tohutō(machchar):
-    return vowel_map[matchchar.group[0]]
+def tilda2tohutō(matchchar):
+    return vowel_map[matchchar.group(2).lower()]
 
 
 def get_daily_debates(txt, date=None):
@@ -110,14 +113,15 @@ def get_daily_debates(txt, date=None):
         txt = txt[date.end():]
 
     print('Processing {}'.format(date.group(0)))
-    debate_map = {}
+    debate_list = []
     nextdate = debate_date.search(txt)
     if nextdate:
-        debate_map = get_daily_debates(txt=txt[nextdate.end():], date=nextdate)
+        debate_list = get_daily_debates(
+            txt=txt[nextdate.end():], date=nextdate)
         txt = txt[:nextdate.start()]
-    debate_map[date.group(0)] = get_speeches(txt)[0]
+    debate_list.append([date.group(0), get_speeches(txt)[0]])
     print('Processed {}'.format(date.group(0)))
-    return debate_map
+    return debate_list
 
 
 def get_speeches(txt):
@@ -137,23 +141,23 @@ def get_speeches(txt):
         speeches, paragraphs = get_speeches(remaining_txt)
 
     if kaikōrero:
-        # print('\ngroup0', kaikōrero.group(0))
-        # print('group1', kaikōrero.group(1))
-        # print('group2', kaikōrero.group(2))
-        # print('group3', kaikōrero.group(3)) we want group 3
-        # print('group4', kaikōrero.group(4))
-        paragraph = paragraph[kaikōrero.end():]
-        return [Speech(kaikōrero.group(
-            3), [Paragraph(paragraph)] + paragraphs)] + speeches, []
+        speaker_name = kaikōrero.group(3)
+        if re.match('Vote|Ayes|Noes', speaker_name):
+            line = re.match(r'[^\n]*\n', txt)
+            return get_speeches(txt[line.end():])
+        if re.match(name_behaviour, speaker_name):
+            paragraph = paragraph[kaikōrero.end():]
+            return [Speech(speaker_name, [Paragraph(paragraph)] + paragraphs)] + speeches, []
 
     return speeches, [Paragraph(paragraph)] + paragraphs
 
 
 def tuhituhikifile(volume, debates, index_csv, corpus_csv):
-    for date, speeches in debates.items():
+    for date, speeches in reversed(debates):
         totals = [0, 0, 0]
 
         turn = 0
+        p_sum = 0
         for speech in speeches:
             turn = turn + 1
             kaikōrero = speech.kaikōrero
@@ -164,10 +168,12 @@ def tuhituhikifile(volume, debates, index_csv, corpus_csv):
                     print('{}: {}\nSpeaker {}: {}, paragraph {},\nMaori = {}%\n{}\n'.format(
                         volume, date, turn, kaikōrero, p_count, paragraph.ratios[3], paragraph.txt))
                     corpus_csv.writerow(
-                        [volume, date, turn, kaikōrero, p_count] + paragraph.ratios + [paragraph.txt])
+                        [volume, date, kaikōrero, turn, p_count] + paragraph.ratios + [paragraph.txt])
                 for i in range(len(totals)):
                     totals[i] = totals[i] + paragraph.ratios[i]
-        index_csv.writerow([volume, date] + totals)
+            p_sum = p_sum + p_count
+        index_csv.writerow([volume, date, p_sum] + totals +
+                           [get_percentage(totals[0], totals[1], totals[2])])
 
 
 def main():
