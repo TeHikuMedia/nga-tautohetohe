@@ -119,37 +119,41 @@ def get_daily_debates(txt, date=None):
         debate_list = get_daily_debates(
             txt=txt[nextdate.end():], date=nextdate)
         txt = txt[:nextdate.start()]
-    debate_list.append([date.group(0), get_speeches(txt)[0]])
+    debate_list.append([date.group(0), get_speeches(txt)])
     print('Processed {}'.format(date.group(0)))
     return debate_list
 
 
 def get_speeches(txt):
-    kaikōrero = new_speaker.match(txt)
-    paragraph_end = new_paragraph.search(txt)
-    paragraph = txt
-    remaining_txt = None
-
-    if paragraph_end:
-        paragraph = txt[:paragraph_end.start() + 1]
-        remaining_txt = txt[paragraph_end.end():]
-
     speeches = []
     paragraphs = []
+    speaker = ''
 
-    if remaining_txt:
-        speeches, paragraphs = get_speeches(remaining_txt)
+    while True:
+        kaikōrero = new_speaker.match(txt)
+        name = ''
+        if kaikōrero:
+            name = kaikōrero.group(3)
+            if re.match('Vote|Ayes|Noes', name):
+                line = re.match(r'[^\n]*\n', txt)
+                txt = txt[line.end():]
+                continue
+            if re.match(name_behaviour, name):
+                speeches.append(Speech(speaker, paragraphs))
+                paragraphs = []
+                speaker = name
+                txt = txt[kaikōrero.end():]
 
-    if kaikōrero:
-        speaker_name = kaikōrero.group(3)
-        if re.match('Vote|Ayes|Noes', speaker_name):
-            line = re.match(r'[^\n]*\n', txt)
-            return get_speeches(txt[line.end():])
-        if re.match(name_behaviour, speaker_name):
-            paragraph = paragraph[kaikōrero.end():]
-            return [Speech(speaker_name, [Paragraph(paragraph)] + paragraphs)] + speeches, []
+        paragraph_end = new_paragraph.search(txt)
+        if paragraph_end:
+            paragraphs.append(Paragraph(txt[:paragraph_end.start() + 1]))
+            txt = txt[paragraph_end.end():]
+        else:
+            paragraphs.append(Paragraph(txt))
+            speeches.append(Speech(speaker, paragraphs))
+            break
 
-    return speeches, [Paragraph(paragraph)] + paragraphs
+    return speeches
 
 
 def tuhituhikifile(volume, debates, index_csv, corpus_csv):
@@ -180,12 +184,13 @@ def main():
 
     start_time = time.time()
 
-    setrecursionlimit(4000)
-
-    process_txt_files(dirpath='1987-2002')
-
-    print('Corpus compilation successful\n')
-    print("\n--- Job took %s seconds ---\n" % (time.time() - start_time))
+    try:
+        process_txt_files(dirpath='1987-2002')
+        print('Corpus compilation successful\n')
+    except Exception as e:
+        print(e)
+    finally:
+        print("\n--- Job took %s seconds ---\n" % (time.time() - start_time))
 
 
 if __name__ == '__main__':

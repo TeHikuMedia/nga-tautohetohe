@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.request import urlopen
 from bs4 import BeautifulSoup as bs
 from datetime import datetime
-from taumahi import kupu_ratios
+from taumahi import kupu_ratios, get_percentage
 
 hansard_url = 'https://www.parliament.nz'
 hansard_meta_url = '{}{}'.format(hansard_url, '/en/document/')
@@ -64,9 +64,7 @@ class HansardTuhingaScraper:
         title = meta_entries[0].get_text()
 
         transcripts = []
-        teReo_size = 0
-        ambiguous_size = 0
-        other_size = 0
+        totals = [0, 0, 0]
         awaiting_teReo = None
         section_count = 0
 
@@ -75,17 +73,13 @@ class HansardTuhingaScraper:
         for section in self.kōrero_hupo:
 
             section_count += 1
-            # print('section:', section_count)
             paragraph_count = 0
-
             ingoa_kaikōrero = ''
 
             p_list = section.find_all('p')
             print('Paragraphs =', len(p_list))
 
             for paragraph in p_list:
-
-                # print('paragraph: ', paragraph_count)
 
                 strong_tags = paragraph.find_all('strong')
 
@@ -97,43 +91,42 @@ class HansardTuhingaScraper:
                         ingoa_kaikōrero = string.strip()
                         flag = True
 
-                kōrero_waenga = paragraph.get_text(strip=True)
+                kōrero = paragraph.get_text(strip=True)
+                check = None
+                if re.match(r'\[.*\]', kōrero):
+                    if re.match(r'\[Authorised Te Reo text', kōrero):
+                        check = True
+                        awaiting_teReo = True
+                    else:
+                        continue
 
                 if flag:
-                    # p = re.search(r'(?<=:).*', kōrero_waenga)
-                    p = kōrero_waenga.split(':', 1)[-1].strip()
+                    p = kōrero.split(':', 1)[-1].strip()
                     if p:
-                        kōrero_waenga = p
+                        kōrero = p
 
-                if re.search(r'[a-zA-Z]', kōrero_waenga):
+                if re.search(r'[a-zA-Z]', kōrero):
                     paragraph_count += 1
 
-                    save_corpus, numbers = kupu_ratios(kōrero_waenga)
+                    save_corpus, numbers = kupu_ratios(kōrero)
 
-                    teReo_size += numbers[0]
-                    ambiguous_size += numbers[1]
-                    other_size += numbers[2]
+                    for i in range(len(totals)):
+                        totals[i] = totals[i] + numbers[i]
 
-                    if not save_corpus:
-                        awaiting_teReo = re.match(
-                            r'\[Authorised Te Reo text', kōrero_waenga)
-                        if awaiting_teReo:
-                            save_corpus = True
-
-                    if save_corpus:
+                    if save_corpus or check:
                         print('{}: {}\nsection {}, paragraph {}, Maori = {}%\nname:{}\n{}\n'.format(
                             wā, title, section_count,
-                            paragraph_count, numbers[3], ingoa_kaikōrero, kōrero_waenga))
+                            paragraph_count, numbers[3], ingoa_kaikōrero, kōrero))
                         transcripts.append([doc_url, wā, title, section_count, paragraph_count,
-                                            ingoa_kaikōrero] + numbers + [kōrero_waenga])
+                                            ingoa_kaikōrero] + numbers + [kōrero])
         print('Time:', self.retreived)
-        doc_record = [self.retreived, self.doc_url, wā, title, teReo_size, ambiguous_size,
-                      other_size, 100 * teReo_size / (teReo_size + other_size), awaiting_teReo]
+        doc_record = [self.retreived, self.doc_url, wā, title] + totals + \
+            [get_percentage(totals[0], totals[1], totals[2]), awaiting_teReo]
         return transcripts, doc_record
 
 
 def scrape_Hansard_URLs():
-    filename = 'urlindex.csv'
+    filename = 'hansardWEBURLs.csv'
 
     has_header = False
     doc_url_list = []
@@ -193,8 +186,8 @@ def get_new_urls(last_url):
 def aggregate_hansard_corpus(doc_urls):
     transcripts = []
 
-    corpusfilename = 'hansardcorpus.csv'
-    recordfilename = 'hansardrecord.csv'
+    corpusfilename = 'hansardcorpusWEB.csv'
+    recordfilename = 'hansardindexWEB.csv'
 
     record_list = []
     waiting_for_reo_list = []
@@ -213,37 +206,30 @@ def aggregate_hansard_corpus(doc_urls):
             head_writer.writerow([
                 'Date retreived',
                 'Hansard document url',
-                'wā',
-                'title',
+                'Wā',
+                'Title',
                 'Te Reo length',
                 'Ambiguous length',
                 'Other length',
-                'is Māori (%)',
-                'awaiting authorised reo'
+                'Is Māori (%)',
+                'Awaiting authorised reo'
             ])
 
-        # corpus_list = []
-
     if not Path(corpusfilename).exists():
-        #     with open(corpusfilename, 'r') as corpus:
-        #         if corpus_has_header:
-        #             for row in csv.DictReader(corpus):
-        #                 record_list.append(row)
-        # else:
         with open(corpusfilename, 'w') as corpus:
             head_writer = csv.writer(corpus)
             head_writer.writerow([
                 'Hansard document url',
-                'wā',
-                'title',
-                'section number',
-                'utterance number',
-                'ingoa kaikōrero',
+                'Wā',
+                'Title',
+                'Section number',
+                'Utterance number',
+                'Ingoa kaikōrero',
                 'Te Reo length',
                 'Ambiguous length',
                 'Other length',
-                'is Māori (%)',
-                'kōrero waenga'
+                'Is Māori (%)',
+                'Kōrero'
             ])
 
     remaining_urls = []
@@ -280,7 +266,6 @@ def main():
     start_time = time.time()
 
     hansard_doc_urls = scrape_Hansard_URLs()
-
     aggregate_hansard_corpus(hansard_doc_urls)
 
     print('Corpus compilation successful\n')

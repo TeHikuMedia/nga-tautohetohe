@@ -2,7 +2,9 @@
 __pycache__/*
 *.pyc
 *.pdf
-hansardcorpus.csv
-hansardrecord.csv
-cleancorpus.csv
+hansardcorpusPDF.csv
+hansardindexPDF.csv
+hansardcorpusWEB.csv
+hansardindexWEB.csv
+hansardWEBURLs.csv
 1987-2002/*
