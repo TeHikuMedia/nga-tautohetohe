@@ -9,11 +9,10 @@ from os import listdir
 from sys import getrecursionlimit, setrecursionlimit
 from os.path import isfile, join
 
-
-titles = '(([-~\'`() a-zA-Z]*\n)*)'
-speaker = '[^:\n]*'
-name_behaviour = '((\d{1,2}\. )?(Rt\.? )?(Hon\. )?)?([A-Z]([a-z]+|[A-Z]+|\.?))([ -][A-Z]([a-z]+|[A-Z]+|\.?))+'
-sentence_end = ['[.!?]', '[\'`]*']
+apostrophes = '‘’\''
+name_behaviour = '((\d{d}\. )?(Rt\.? )?(Hon\. )?)?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+( \(|:)'.format(
+    a=apostrophes, d='{1,2}')
+sentence_end = ['[.!?]', '[{}]*'.format(apostrophes)]
 page_endings = '(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)'
 
 # Regex to replace page breaks with new line
@@ -21,7 +20,7 @@ page_break = re.compile(pattern=page_endings)
 
 # Regex to replace all tilda_vowels with macron vowels
 vowel_map = {'a': 'ā', 'e': 'ē', 'i': 'ī', 'o': 'ō', 'u': 'ū'}
-vowels = re.compile('(~|\[A macron\])([aeiouAEIOU])')
+vowels = re.compile(r'(A?~|\[A macron\])([aeiouAEIOU])')
 
 # Regex to look for meeting date then split into date-debate key-value map
 debate_date = re.compile(pattern=r'[A-Z]{6,9}, \d{1,2} [A-Z]{3,9} \d{4}')
@@ -31,7 +30,8 @@ paragraph_signal = '({}+|-+){}\n'.format(sentence_end[0], sentence_end[1])
 new_paragraph = re.compile(pattern=paragraph_signal)
 
 # Regex to check each paragraph matches for a new speaker, extract and replace with empty string
-speaker_pattern = '{t}({s}|([^,\n]*\n){s}):'.format(t=titles, s=speaker)
+speaker_pattern = '{titles}({speaker}|([^,\n]*\n){speaker}):'.format(
+    titles='(([-~{}() a-zA-Z]*\n)*)'.format(apostrophes), speaker='[^:\n]*')
 new_speaker = re.compile(pattern=speaker_pattern)
 
 # Regec to split paragraph into sentences
@@ -146,14 +146,19 @@ def get_speeches(txt):
 
         paragraph_end = new_paragraph.search(txt)
         if paragraph_end:
-            paragraphs.append(Paragraph(txt[:paragraph_end.start() + 1]))
+            paragraphs.append(
+                Paragraph(clean_whitespace(txt[:paragraph_end.start() + 1])))
             txt = txt[paragraph_end.end():]
         else:
-            paragraphs.append(Paragraph(txt))
+            paragraphs.append(Paragraph(clean_whitespace(txt)))
             speeches.append(Speech(speaker, paragraphs))
             break
 
     return speeches
+
+
+def clean_whitespace(paragraph):
+    return re.sub('\s*', ' ', paragraph.strip())
 
 
 def tuhituhikifile(volume, debates, index_csv, corpus_csv):
