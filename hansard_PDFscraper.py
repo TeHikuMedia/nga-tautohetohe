@@ -4,7 +4,7 @@ from pathlib import Path
 import time
 from datetime import datetime
 import re
-from taumahi import kupu_ratios, get_percentage
+from taumahi import *
 from os import listdir
 from sys import getrecursionlimit, setrecursionlimit
 from os.path import isfile, join
@@ -93,7 +93,8 @@ def process_txt_files(dirpath):
                     txt = re.sub(r'\[[^\]]*]', '', txt)
                     tuhituhikifile(f, get_daily_debates(
                         txt), index_csv, corpus_csv)
-                print('{} processed\n'.format(f))
+                print('{} processed at {} after {}\n'.format(
+                    f, datetime.now(), get_rate()))
 
 
 def get_file_list(dirpath):
@@ -158,44 +159,63 @@ def get_speeches(txt):
 
 
 def clean_whitespace(paragraph):
-    return re.sub('\s*', ' ', paragraph.strip())
+    return re.sub(r'\s+', ' ', paragraph).strip()
 
 
 def tuhituhikifile(volume, debates, index_csv, corpus_csv):
+    volume_totals = [0, 0, 0]
     for date, speeches in reversed(debates):
         totals = [0, 0, 0]
 
         turn = 0
         p_sum = 0
         for speech in speeches:
-            turn = turn + 1
+            turn += 1
             kaikōrero = speech.kaikōrero
             p_count = 0
             for paragraph in speech.paragraphs:
-                p_count = p_count + 1
+                p_count += 1
                 if paragraph.condition:
                     print('{}: {}\nSpeaker {}: {}, paragraph {},\nMaori = {}%\n{}\n'.format(
                         volume, date, turn, kaikōrero, p_count, paragraph.ratios[3], paragraph.txt))
                     corpus_csv.writerow(
                         [volume, date, kaikōrero, turn, p_count] + paragraph.ratios + [paragraph.txt])
                 for i in range(len(totals)):
-                    totals[i] = totals[i] + paragraph.ratios[i]
-            p_sum = p_sum + p_count
+                    totals[i] += paragraph.ratios[i]
+            p_sum += p_count
         index_csv.writerow([volume, date, p_sum] + totals +
                            [get_percentage(totals[0], totals[1], totals[2])])
+        for i in range(len(totals)):
+            volume_totals[i] += totals[i]
+    print(
+        'Maori = {a}, Ambiguous = {b}, Non-Māori = {c}, Percentage = {d} %'.format(
+            a=volume_totals[0], b=volume_totals[1], c=volume_totals[2], d=get_percentage(volume_totals[0], volume_totals[1], volume_totals[2])))
 
 
 def main():
-
-    start_time = time.time()
-
     try:
         process_txt_files(dirpath='1987-2002')
         print('Corpus compilation successful\n')
     except Exception as e:
         print(e)
     finally:
-        print("\n--- Job took %s seconds ---\n" % (time.time() - start_time))
+        print("\n--- Job took {} ---\n".format(get_rate()))
+
+
+start_time = time.time()
+
+
+def get_rate():
+    m, s = divmod(time.time() - start_time, 60)
+    s = int(s)
+    h, m = divmod(m, 60)
+    if m:
+        m = int(m)
+        if h:
+            return '{} hours {} minutes {} seconds'.format(int(h), m, s)
+        else:
+            return '{} minutes {} seconds'.format(m, s)
+    return '{} seconds'.format(s)
 
 
 if __name__ == '__main__':
