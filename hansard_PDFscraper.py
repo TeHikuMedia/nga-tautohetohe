@@ -111,10 +111,11 @@ def get_daily_debates(txt, date=None):
         txt = txt[:nextdate.start()]
     loops = most_loops
     debate_list.append([date.group(0), get_speeches(txt)])
+    print('Processed {}'.format(date.group(0)))
     if most_loops > loops:
         global longest_day
         longest_day = date.group(0)
-    print('Processed {}'.format(date.group(0)))
+        print('Most strings! {}\n'.format(most_loops))
     return debate_list
 
 
