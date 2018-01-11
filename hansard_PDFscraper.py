@@ -10,33 +10,10 @@ from sys import getrecursionlimit, setrecursionlimit
 from os.path import isfile, join
 
 apostrophes = '‘’\''
-name_behaviour = '((\d{d}\. )?(Rt\.? )?(Hon\. )?)?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+( \(|:)'.format(
-    a=apostrophes, d='{1,2}')
 sentence_end = ['[.!?]', '[{}]*'.format(apostrophes)]
-page_endings = '(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)'
 
-# Regex to replace page breaks with new line
-page_break = re.compile(pattern=page_endings)
-
-# Regex to replace all tilda_vowels with macron vowels
-vowel_map = {'a': 'ā', 'e': 'ē', 'i': 'ī', 'o': 'ō', 'u': 'ū'}
-vowels = re.compile(r'(A?~|\[A macron\])([aeiouAEIOU])')
-
-# Regex to look for meeting date then split into date-debate key-value map
-debate_date = re.compile(pattern=r'[A-Z]{6,9}, \d{1,2} [A-Z]{3,9} \d{4}')
-
-# Regex for splittting paragraphs
-paragraph_signal = '({}+|-+){}\n'.format(sentence_end[0], sentence_end[1])
-new_paragraph = re.compile(pattern=paragraph_signal)
-
-# Regex to check each paragraph matches for a new speaker, extract and replace with empty string
-speaker_pattern = '{titles}({speaker}|([^,\n]*\n){speaker}):'.format(
-    titles='(([-~{}() a-zA-Z]*\n)*)'.format(apostrophes), speaker='[^:\n]*')
-new_speaker = re.compile(pattern=speaker_pattern)
-
-# Regec to split paragraph into sentences
-sentence_signal = '{}{} '.format(sentence_end[0], sentence_end[1])
-new_sentence = re.compile(pattern=sentence_signal)
+# Regex to split paragraph into sentences
+new_sentence = re.compile('{}{} '.format(sentence_end[0], sentence_end[1]))
 
 
 class Speech:
@@ -53,6 +30,14 @@ class Paragraph:
     def __init__(self, txt):
         self.txt = txt
         self.condition, self.ratios = kupu_ratios(txt)
+
+
+# Regex to replace page breaks with new line
+page_break = re.compile('(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)')
+
+# Regex to replace all tilda_vowels with macron vowels
+vowel_map = {'a': 'ā', 'e': 'ē', 'i': 'ī', 'o': 'ō', 'u': 'ū'}
+vowels = re.compile(r'(A?~|\[A macron\])([aeiouAEIOU])')
 
 
 def process_txt_files(dirpath):
@@ -108,6 +93,10 @@ def tilda2tohutō(matchchar):
     return vowel_map[matchchar.group(2).lower()]
 
 
+# Regex to look for meeting date then split into date-debate key-value map
+debate_date = re.compile(pattern=r'[A-Z]{6,9}, \d{1,2} [A-Z]{3,9} \d{4}')
+
+
 def get_daily_debates(txt, date=None):
     if not date:
         date = debate_date.search(txt)
@@ -120,9 +109,24 @@ def get_daily_debates(txt, date=None):
         debate_list = get_daily_debates(
             txt=txt[nextdate.end():], date=nextdate)
         txt = txt[:nextdate.start()]
+    loops = most_loops
     debate_list.append([date.group(0), get_speeches(txt)])
+    if most_loops > loops:
+        global longest_day
+        longest_day = date.group(0)
     print('Processed {}'.format(date.group(0)))
     return debate_list
+
+
+# Regex for splittting paragraphs
+new_paragraph = re.compile(
+    '({}+|-+){}\n'.format(sentence_end[0], sentence_end[1]))
+
+# Regex to check each paragraph matches for a new speaker, then extracts the name
+new_speaker = re.compile('{titles}({speaker}|([^,\n]*\n){speaker})'.format(
+    titles='(([-~{}() a-zA-Z]*\n)*)'.format(apostrophes), speaker='[^:\n]*:'))
+name_behaviour = re.compile('(\d{d}\. )?((Rt\.? )?(Hon\. )?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+)( \(|:)'.format(
+    a=apostrophes, d='{1,2}'))
 
 
 def get_speeches(txt):
@@ -130,19 +134,24 @@ def get_speeches(txt):
     paragraphs = []
     speaker = ''
 
+    loops = 0
     while True:
+        loops += 1
+        if loops >= 1000 and loops % 500 == 0:
+            print('Loops exceeded', loops)
         kaikōrero = new_speaker.match(txt)
         name = ''
         if kaikōrero:
-            name = kaikōrero.group(3)
-            if re.match('Vote|Ayes|Noes', name):
+            name_string = kaikōrero.group(3)
+            if re.match('Vote|Ayes|Noes', name_string):
                 line = re.match(r'[^\n]*\n', txt)
                 txt = txt[line.end():]
                 continue
-            if re.match(name_behaviour, name):
+            name = re.match(name_behaviour, name_string)
+            if name:
                 speeches.append(Speech(speaker, paragraphs))
                 paragraphs = []
-                speaker = name
+                speaker = name.group(2)
                 txt = txt[kaikōrero.end():]
 
         paragraph_end = new_paragraph.search(txt)
@@ -155,6 +164,9 @@ def get_speeches(txt):
             speeches.append(Speech(speaker, paragraphs))
             break
 
+    global most_loops
+    if loops > most_loops:
+        most_loops = loops
     return speeches
 
 
@@ -199,10 +211,14 @@ def main():
     except Exception as e:
         print(e)
     finally:
-        print("\n--- Job took {} ---\n".format(get_rate()))
+        print("\n--- Job took {} ---".format(get_rate()))
+        print('Looped through {} strings while processing {}\n'.format(
+            most_loops, longest_day))
 
 
 start_time = time.time()
+longest_day = ''
+most_loops = 0
 
 
 def get_rate():
