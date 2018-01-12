@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.request import urlopen
 from bs4 import BeautifulSoup as bs
 from datetime import datetime
-from taumahi import kupu_ratios, get_percentage
+from taumahi import *
 
 hansard_url = 'https://www.parliament.nz'
 hansard_meta_url = '{}{}'.format(hansard_url, '/en/document/')
@@ -114,6 +114,7 @@ class HansardTuhingaScraper:
                         totals[i] = totals[i] + numbers[i]
 
                     if save_corpus or check:
+                        kōrero = clean_whitespace(kōrero)
                         print('{}: {}\nsection {}, paragraph {}, Maori = {}%\nname:{}\n{}\n'.format(
                             wā, title, section_count,
                             paragraph_count, numbers[3], ingoa_kaikōrero, kōrero))

@@ -9,12 +9,6 @@ from os import listdir
 from sys import getrecursionlimit, setrecursionlimit
 from os.path import isfile, join
 
-apostrophes = '‘’\''
-sentence_end = ['[.!?]', '[{}]*'.format(apostrophes)]
-
-# Regex to split paragraph into sentences
-new_sentence = re.compile('{}{} '.format(sentence_end[0], sentence_end[1]))
-
 
 class Speech:
     """docstring for Speech."""
@@ -34,10 +28,6 @@ class Paragraph:
 
 # Regex to replace page breaks with new line
 page_break = re.compile('(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)')
-
-# Regex to replace all tilda_vowels with macron vowels
-vowel_map = {'a': 'ā', 'e': 'ē', 'i': 'ī', 'o': 'ō', 'u': 'ū'}
-vowels = re.compile(r'(A?~|\[A macron\])([aeiouAEIOU])')
 
 
 def process_txt_files(dirpath):
@@ -73,8 +63,7 @@ def process_txt_files(dirpath):
             for f in get_file_list(dirpath):
                 print('\nProcessing {}:\n'.format(f))
                 with open('{}/{}'.format(dirpath, f), 'r') as hansard_txt:
-                    txt = vowels.sub(
-                        tilda2tohutō, page_break.sub('\n', hansard_txt.read()))
+                    txt = sub_vowels(page_break.sub('\n', hansard_txt.read()))
                     txt = re.sub(r'\[[^\]]*]', '', txt)
                     tuhituhikifile(f, get_daily_debates(
                         txt), index_csv, corpus_csv)
@@ -87,10 +76,6 @@ def get_file_list(dirpath):
         join(dirpath, f)) and f.endswith('.txt')]
     files.sort()
     return files
-
-
-def tilda2tohutō(matchchar):
-    return vowel_map[matchchar.group(2).lower()]
 
 
 # Regex to look for meeting date then split into date-debate key-value map
@@ -119,10 +104,6 @@ def get_daily_debates(txt, date=None):
     return debate_list
 
 
-# Regex for splittting paragraphs
-new_paragraph = re.compile(
-    '({}+|-+){}\n'.format(sentence_end[0], sentence_end[1]))
-
 # Regex to check each paragraph matches for a new speaker, then extracts the name
 new_speaker = re.compile('{titles}({speaker}|([^,\n]*\n){speaker})'.format(
     titles='(([-~{}() a-zA-Z]*\n)*)'.format(apostrophes), speaker='[^:\n]*:'))
@@ -140,39 +121,27 @@ def get_speeches(txt):
         loops += 1
         if loops >= 1000 and loops % 500 == 0:
             print('Loops exceeded', loops)
+
         kaikōrero = new_speaker.match(txt)
-        name = ''
         if kaikōrero:
-            name_string = kaikōrero.group(3)
-            if re.match('Vote|Ayes|Noes', name_string):
-                line = re.match(r'[^\n]*\n', txt)
-                txt = txt[line.end():]
-                continue
-            name = re.match(name_behaviour, name_string)
+            name = re.match(name_behaviour, kaikōrero.group(3))
             if name:
                 speeches.append(Speech(speaker, paragraphs))
                 paragraphs = []
                 speaker = name.group(2)
                 txt = txt[kaikōrero.end():]
 
-        paragraph_end = new_paragraph.search(txt)
-        if paragraph_end:
-            paragraphs.append(
-                Paragraph(clean_whitespace(txt[:paragraph_end.start() + 1])))
-            txt = txt[paragraph_end.end():]
-        else:
-            paragraphs.append(Paragraph(clean_whitespace(txt)))
+        p, txt = get_paragraph(txt)
+        paragraphs.append(Paragraph(p))
+        if not txt:
             speeches.append(Speech(speaker, paragraphs))
             break
 
     global most_loops
     if loops > most_loops:
         most_loops = loops
+
     return speeches
-
-
-def clean_whitespace(paragraph):
-    return re.sub(r'\s+', ' ', paragraph).strip()
 
 
 def tuhituhikifile(volume, debates, index_csv, corpus_csv):
@@ -189,10 +158,11 @@ def tuhituhikifile(volume, debates, index_csv, corpus_csv):
             for paragraph in speech.paragraphs:
                 p_count += 1
                 if paragraph.condition:
+                    kōrero = clean_whitespace(paragraph.txt)
                     print('{}: {}\nSpeaker {}: {}, paragraph {},\nMaori = {}%\n{}\n'.format(
-                        volume, date, turn, kaikōrero, p_count, paragraph.ratios[3], paragraph.txt))
+                        volume, date, turn, kaikōrero, p_count, paragraph.ratios[3], kōrero))
                     corpus_csv.writerow(
-                        [volume, date, kaikōrero, turn, p_count] + paragraph.ratios + [paragraph.txt])
+                        [volume, date, kaikōrero, turn, p_count] + paragraph.ratios + [kōrero])
                 for i in range(len(totals)):
                     totals[i] += paragraph.ratios[i]
             p_sum += p_count
