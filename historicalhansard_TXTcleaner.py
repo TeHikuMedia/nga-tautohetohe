@@ -6,14 +6,10 @@ from datetime import datetime
 import re
 from taumahi import *
 from os import listdir
-from sys import getrecursionlimit, setrecursionlimit
+from multiprocessing.dummy import Process, Pool as ThreadPool, Lock
 from os.path import isfile, join
 
-apostrophes = '‘’\''
-sentence_end = ['[.!?]', '[{}]*'.format(apostrophes)]
-
-# Regex to split paragraph into sentences
-new_sentence = re.compile('{}{} '.format(sentence_end[0], sentence_end[1]))
+dirpath = 'volumes'
 
 
 class Speech:
@@ -25,76 +21,93 @@ class Speech:
 
 
 class Paragraph:
-    """docstring for Speech."""
+    """docstring for Paragraph."""
 
     def __init__(self, txt):
         self.txt = txt
         self.condition, self.ratios = kupu_ratios(txt)
 
 
-# Regex to replace page breaks with new line
-page_break = re.compile('(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)')
+class Sentence:
+    """docstring for Sentence."""
 
-# Regex to replace all tilda_vowels with macron vowels
-vowel_map = {'a': 'ā', 'e': 'ē', 'i': 'ī', 'o': 'ō', 'u': 'ū'}
-vowels = re.compile(r'(A?~|\[A macron\])([aeiouAEIOU])')
-
-
-def process_txt_files(dirpath):
-    corpusfilename = 'hansardcorpusPDF.csv'
-    indexfilename = 'hansardindexPDF.csv'
-
-    with open(indexfilename, 'w') as index:
-        index_csv = csv.writer(index)
-        index_csv.writerow([
-            'Hansard volume',
-            'Rā',
-            'Num paragraphs',
-            'Te Reo length',
-            'Ambiguous length',
-            'Other length',
-            'is Māori (%)',
-        ])
-        with open(corpusfilename, 'w') as kiwaho:
-            corpus_csv = csv.writer(kiwaho)
-            corpus_csv.writerow([
-                'Hansard volume',
-                'Rā',
-                'Ingoa kaikōrero',
-                'Speaker turn',
-                'Paragraph number',
-                'Te Reo length',
-                'Ambiguous length',
-                'Other length',
-                'Is Māori (%)',
-                'Kōrero'
-            ])
-
-            for f in get_file_list(dirpath):
-                print('\nProcessing {}:\n'.format(f))
-                with open('{}/{}'.format(dirpath, f), 'r') as hansard_txt:
-                    txt = vowels.sub(
-                        tilda2tohutō, page_break.sub('\n', hansard_txt.read()))
-                    txt = re.sub(r'\[[^\]]*]', '', txt)
-                    tuhituhikifile(f, get_daily_debates(
-                        txt), index_csv, corpus_csv)
-                print('{} processed at {} after {}\n'.format(
-                    f, datetime.now(), get_rate()))
+    def __init__(self, txt):
+        self.txt = txt
+        self.condition, self.ratios = kupu_ratios(txt)
 
 
-def get_file_list(dirpath):
+def process_csv_files():
+    with ThreadPool(15) as pool:
+        results = pool.map(process_csv, get_file_list())
+
+    # corpusfilename = 'hathihansardcorpus.csv'
+    # indexfilename = 'hathihansardindex.csv'
+    #
+    # with open(indexfilename, 'w') as index, open(corpusfilename, 'w') as kiwaho:
+    #     index_csv = csv.writer(index)
+    #     index_csv.writerow([
+    #         'Hansard volume',
+    #         'Rā',
+    #         'Num paragraphs',
+    #         'Te Reo length',
+    #         'Ambiguous length',
+    #         'Other length',
+    #         'is Māori (%)',
+    #     ])
+    #     corpus_csv = csv.writer(kiwaho)
+    #     corpus_csv.writerow([
+    #         'Hansard volume',
+    #         'Rā',
+    #         'Ingoa kaikōrero',
+    #         'Speaker turn',
+    #         'Paragraph number',
+    #         'Te Reo length',
+    #         'Ambiguous length',
+    #         'Other length',
+    #         'Is Māori (%)',
+    #         'Kōrero'
+    #     ])
+
+
+def get_file_list():
     files = [f for f in listdir(dirpath) if isfile(
         join(dirpath, f)) and f.endswith('.txt')]
     files.sort()
     return files
 
 
+def process_csv(f):
+    print('\nProcessing {}:\n'.format(f))
+
+    with open('{}/{}'.format(dirpath, f), 'r') as hansard_csv:
+        reader = csv.DictReader()
+        fieldnames = reader.fieldnames
+        for row in reader:
+            if not (row['url'].endswith('i', 'x', 'v') or row['page'] == '1'):
+
+                text = re.sub('[\n.]*]', '', row['text'], 1)
+                # Extract speeches, paragraphs, sentences
+                txt = vowels.sub(
+                    tilda2tohutō, page_break.sub('\n', hansard_txt.read()))
+                txt = re.sub(r'\[[^\]]*]', '', txt)
+                tuhituhikifile(f, get_daily_debates(
+                    txt), index_csv, corpus_csv)
+
+    print('{} processed at {} after {}\n'.format(
+        f, datetime.now(), get_rate()))
+
+
 def tilda2tohutō(matchchar):
     return vowel_map[matchchar.group(2).lower()]
 
 
-# Regex to look for meeting date then split into date-debate key-value map
-debate_date = re.compile(pattern=r'[A-Z]{6,9}, \d{1,2} [A-Z]{3,9} \d{4}')
+# Match page header to sub out
+header = re.compile(
+    r'(([^\n]+\n){0,5}[^\n]*\][^\n]*)\n(([\da-zA-Z]+|([^ \n]+( [^ \n,]+){0,2}))\n)*')
+
+# Regex to look for meeting date
+debate_date = re.compile(
+    pattern=r'\n[A-Z][a-z]{5,8}, [\dSl&]{1,2}[a-zA-Z]{2} [A-Z][!a-z]{2,8}, [\d(A-Z]{4,5}')
 
 
 def get_daily_debates(txt, date=None):
@@ -207,7 +220,7 @@ def tuhituhikifile(volume, debates, index_csv, corpus_csv):
 
 def main():
     try:
-        process_txt_files(dirpath='1987-2002')
+        process_csv_files()
         print('Corpus compilation successful\n')
     except Exception as e:
         print(e)

@@ -11,19 +11,28 @@ from datetime import datetime
 from taumahi import *
 
 hansard_url = 'https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'
-num_volumes = 488
 hathi_domain = 'https://babel.hathitrust.org'
-num_threads = 150  # Hathi network can download 100+ pages between errors, so 100+ threads will maximise concurrent page download speed
+index_filename = 'hathivolumeURLs.csv'
 volumes_dir = 'volumes'
 volumes_fieldnames = ['retreived', 'url', 'name',
                       'period', 'session', 'downloaded', 'processed']
+num_volumes = 488
+num_threads = 150  # Hathi network can download 100+ pages between errors, so 100+ threads will maximise concurrent page download speed
+write_lock = Lock()
+sleep_lock = Lock()
+responsive_lock = Lock()
+responsive = True
+tries = 0
+count_lock = Lock()
+total_pages_processed = 0
+interval_pages_processed = 0
+start_time = time.time()
 
 
 class Volume:
     """docstring for Volume."""
 
-    def __init__(self, name, url, period, session, row=None):
-        self.row = row
+    def __init__(self, name, url, period, session):
         self.name = name
         self.url = url
         self.period = period
@@ -32,65 +41,81 @@ class Volume:
 
 
 def get_volume_meta():
-    filename = 'hathivolumeURLs.csv'
-
     print('Getting volume URLs:\n')
-
     volumes = []
-    count = 0
-    if Path(filename).exists():
-        with open(filename, 'r') as url_file:
-            for row in csv.DictReader(url_file):
-                count += 1
-                if not row['downloaded']:
-                    print('Volume', row['name'], row['url'])
-                    volumes.append(
-                        Volume(row['name'], row['url'], row['period'], row['session'], count))
+    complete = 0
+    incomplete = 0
 
-    if count < num_volumes:
-        if not count:
-            with open(filename, 'w') as url_file:
-                writer = csv.DictWriter(url_file, volumes_fieldnames)
-                writer.writeheader()
-        with open(filename, 'a') as url_file:
-            writer = csv.DictWriter(url_file, volumes_fieldnames)
-            for row in scrape_volume_urls(count):
-                writer.writerow(row)
-                count += 1
-                print('Volume {}; {}\n{}\n{}\n'.format(
-                    row['name'], row['period'], row['session'], row['url']))
-                volumes.append(
-                    Volume(row['name'], row['url'], row['period'], row['session'], row=count))
+    # Check to see if all volume urls have been retreived and
+    # if any volumes have already been downloaded and processed:
+    if Path(filename).exists():
+        with write_lock:
+            for row in read_index_rows():
+                if row['downloaded']:
+                    complete += 1
+                else:
+                    incomplete += 1
+                    print('Have link to volume:', row['name'])
+                    yield Volume(row['name'], row['url'], row['period'], row['session'])
+            if not complete:
+                with open(index_filename, 'w') as url_file:
+                    writer = csv.DictWriter(url_file, volumes_fieldnames)
+                    writer.writeheader()
+
+    # Get remaining urls if they haven't been acquired yet:
+    if complete + incomplete < num_volumes:
+        for row in scrape_volume_urls(total):
+            while True:
+                with write_lock, open(index_filename, 'a') as url_file:
+                    writer = csv.DictWriter(url_file, volumes_fieldnames)
+                    writer.writerow(row)
+                    break
+            yield Volume(row['name'], row['url'], row['period'], row['session'])
+
+        # Original script before incorporating pool.imap with the 'yield'statement:
+        # urls = scrape_volume_urls(total)
+        # with open(filename, 'a') as url_file:
+        #     writer = csv.DictWriter(url_file, volumes_fieldnames)
+        #     for row in urls:
+        #         writer.writerow(row)
+        #         yield Volume(row['name'], row['url'], row['period'], row['session'])
 
     print('\nCollected Hathi volume URLs after {}'.format(get_rate(start_time)))
-    print('{}/{} ({}%) volumes downloaded\n'.format(count - len(volumes),
-                                                    count, round(100 * (1 - len(volumes) / count), 2)))
+    print('{}/{} ({}%) volumes downloaded\n'.format(complete,
+                                                    num_volumes, round(100 * (complete / num_volumes), 2)))
 
-    return volumes
+
+def read_index_rows(arg):
+    while True:
+        rows = []
+        with open(index_filename, 'r') as url_file:
+            reader = csv.DictReader(url_file)
+            for row in reader:
+                rows.append(row)
+            return rows
 
 
 def scrape_volume_urls(count):
-
+    # Scrape meta data from table of Hansard volumes
     volume_directory = download_soup(
         hansard_url).select('.wikitable')[0]('tr')[count + 1:num_volumes + 1]
 
     results = None
     with ThreadPool(num_threads) as pool:
-        results = pool.map(scrape_volume_url, volume_directory)
-
-    return results
+        for result in pool.imap(scrape_volume_url, volume_directory):
+            yield result
 
 
 def scrape_volume_url(tr):
-    # print(type(tr))
+    # Scrape data from each cell of each row of Hansard table
     row = {}
-    tds = tr('td')
+    row_cells = tr('td')
     switch = None
     breaker = False
     name, retreived, href, period, session = '', '', '', '', ''
-    for td in tds:
-        if td.a:
-            for a in td('a'):
+    for cell in row_cells:
+        if cell.a:
+            for a in cell('a'):
                 # print(type(tr))
                 if a.string:
                     row['name'] = a.string.strip()
@@ -99,27 +124,24 @@ def scrape_volume_url(tr):
                     row['retreived'] = datetime.now()
         else:
             if switch:
-                row['session'] = td.get_text().strip()
+                row['session'] = cell.get_text().strip()
             else:
-                row['period'] = td.string.strip()
+                row['period'] = cell.string.strip()
                 switch = True
-    print('Got link:', row)
+    print('Got link to volume:', row['name'])
     return row
 
 
 def download_volumes():
-    volumes = get_volume_meta()
     if not Path(volumes_dir).exists():
         mkdir(volumes_dir)
 
     t = time.time()
     with ThreadPool(num_threads) as pool:
-        results = pool.map(download_volume, volumes)
+        for result in pool.imap_unordered(download_volume, get_volume_meta()):
+            pass  # yeild result: start text processing script thread
 
     print("\n--- {} volumes downloaded in {} ---".format(len(volumes), get_rate(t)))
-
-
-write_lock = Lock()
 
 
 def download_volume(volume):
@@ -147,43 +169,44 @@ def download_volume(volume):
             writer.writeheader()
 
     # Download and save remaining volume pages:
-    condition = True
+    more_pages = True
     if url:
-        condition, url, _ = download_page(
+        more_pages, url, _ = download_page(
             url.replace(hathi_domain, '', 1), pagecount)
     else:
         url = volume.url
-    with open(filepath, 'a') as txt_file:
-        writer = csv.DictWriter(txt_file, fieldnames)
-        while condition:
-            pagecount += 1
-            condition, url, row = download_page(url, pagecount)
-            if row:
-                writer.writerow(row)
+    while more_pages:
+        pagecount += 1
+        condition, url, row = download_page(url, pagecount)
+        if row:
+            while True:
+                with open(filepath, 'a') as txt_file:
+                    writer = csv.DictWriter(txt_file, fieldnames)
+                    writer.writerow(row)
+                    break
 
     # Update the record of volume downloads:
-    completion = 1
     with write_lock:
+        completion = 1
         filename = 'hathivolumeURLs.csv'
-        count, rows = 0, []
-        with open(filename, 'r') as url_file:
-            reader = csv.DictReader(url_file)
-            for row in reader:
-                count += 1
-                if row['downloaded']:
-                    completion += 1
-                if volume.row == count:
-                    row['downloaded'] = True
-                rows.append(row)
-            completion = round(100 * completion / count, 2)
+        rows = []
+        for row in get_index_rows():
+            if row['downloaded']:
+                completion += 1
+            elif volume.name == row['name']:
+                row['downloaded'] = True
+            rows.append(row)
+        completion = round(100 * completion / num_volumes, 2)
 
-        with open(filename, 'w') as url_file:
-            writer = csv.DictWriter(url_file, volumes_fieldnames)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow(row)
-        print('Volume {} complete! Downloading {}{} complete\n'.format(
-            name, completion, '%'))
+        while True:
+            with open(filename, 'w') as url_file:
+                writer = csv.DictWriter(url_file, volumes_fieldnames)
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
+            print('Volume {} complete! Downloading {}{} complete\n'.format(
+                name, completion, '%'))
+            break
 
 
 def download_page(url, page):
@@ -208,16 +231,12 @@ def download_page(url, page):
     return url != '#top', url, row
 
 
-sleep_lock = Lock()
-responsive_lock = Lock()
-responsive = True
-tries = 0
-count_lock = Lock()
-total_pages_processed = 0
-interval_pages_processed = 0
-
-
 def download_soup(url):
+    # Retrieves a url and returns soup from parsed HTML.
+    # This method is threadsafe and from a single client IP it is useful for
+    # bombarding a domain with hundreds of queries per second if their
+    # server allows it and puts threads to sleep if the server times out
+    # until the server is ready to start receiving requests again.
     global total_pages_processed, responsive, tries, interval_pages_processed
 
     with responsive_lock:
@@ -254,20 +273,26 @@ def download_soup(url):
                         print('Attempting to retrieve: {}'.format(url))
 
 
+def process_csv(arg):
+    pass
+
+
 def main():
     try:
-        download_volumes()
-        # process_volumes()
+
+        t = time.time()
+        with ThreadPool(8) as pool:
+            for result in pool.imap_unordered(process_csv, download_volumes()):
+                # print(result)
+                pass
+        print("\n--- {} volumes processed in {} ---".format(len(volumes), get_rate(t)))
+
         print('Corpus compilation successful\n')
+
     except Exception as e:
         raise e
     finally:
         print("\n--- Job took {} ---".format(get_rate(start_time)))
-        # print('Looped through {} strings while processing {}\n'.format(
-        # most_loops, longest_day))
-
-
-start_time = time.time()
 
 
 def get_rate(t):
