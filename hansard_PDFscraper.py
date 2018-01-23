@@ -6,7 +6,6 @@ from datetime import datetime
 import re
 from taumahi import *
 from os import listdir
-from sys import getrecursionlimit, setrecursionlimit
 from os.path import isfile, join
 
 
