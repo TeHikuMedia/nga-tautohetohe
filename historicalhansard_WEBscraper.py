@@ -13,11 +13,13 @@ from taumahi import *
 hansard_url = 'https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'
 hathi_domain = 'https://babel.hathitrust.org'
 index_filename = 'hathivolumeURLs.csv'
+index_fieldnames = ['retreived', 'url', 'name',
+                    'period', 'session', 'downloaded', 'processed']
 volumes_dir = 'volumes'
-volumes_fieldnames = ['retreived', 'url', 'name',
-                      'period', 'session', 'downloaded', 'processed']
 num_volumes = 488
-num_threads = 150  # Hathi network can download 100+ pages between errors, so 100+ threads will maximise concurrent page download speed
+# Hathi network can download 100+ pages between errors,
+# so 100+ threads will maximise concurrent page download speed
+num_threads = 150
 write_lock = Lock()
 sleep_lock = Lock()
 responsive_lock = Lock()
@@ -26,18 +28,8 @@ tries = 0
 count_lock = Lock()
 total_pages_processed = 0
 interval_pages_processed = 0
+work_count = 0
 start_time = time.time()
-
-
-class Volume:
-    """docstring for Volume."""
-
-    def __init__(self, name, url, period, session):
-        self.name = name
-        self.url = url
-        self.period = period
-        self.session = session
-        self.pages = []
 
 
 def get_volume_meta():
@@ -48,7 +40,7 @@ def get_volume_meta():
 
     # Check to see if all volume urls have been retreived and
     # if any volumes have already been downloaded and processed:
-    if Path(filename).exists():
+    if Path(index_filename).exists():
         with write_lock:
             for row in read_index_rows():
                 if row['downloaded']:
@@ -56,36 +48,35 @@ def get_volume_meta():
                 else:
                     incomplete += 1
                     print('Have link to volume:', row['name'])
-                    yield Volume(row['name'], row['url'], row['period'], row['session'])
+                    yield row
             if not complete:
                 with open(index_filename, 'w') as url_file:
-                    writer = csv.DictWriter(url_file, volumes_fieldnames)
+                    writer = csv.DictWriter(url_file, index_fieldnames)
                     writer.writeheader()
 
     # Get remaining urls if they haven't been acquired yet:
-    if complete + incomplete < num_volumes:
+    total = complete + incomplete
+    if total < num_volumes:
         for row in scrape_volume_urls(total):
             while True:
                 with write_lock, open(index_filename, 'a') as url_file:
-                    writer = csv.DictWriter(url_file, volumes_fieldnames)
+                    writer = csv.DictWriter(url_file, index_fieldnames)
                     writer.writerow(row)
                     break
-            yield Volume(row['name'], row['url'], row['period'], row['session'])
+            yield row
 
         # Original script before incorporating pool.imap with the 'yield'statement:
         # urls = scrape_volume_urls(total)
         # with open(filename, 'a') as url_file:
-        #     writer = csv.DictWriter(url_file, volumes_fieldnames)
+        #     writer = csv.DictWriter(url_file, index_fieldnames)
         #     for row in urls:
         #         writer.writerow(row)
-        #         yield Volume(row['name'], row['url'], row['period'], row['session'])
+        #         yield row
 
     print('\nCollected Hathi volume URLs after {}'.format(get_rate(start_time)))
-    print('{}/{} ({}%) volumes downloaded\n'.format(complete,
-                                                    num_volumes, round(100 * (complete / num_volumes), 2)))
 
 
-def read_index_rows(arg):
+def read_index_rows():
     while True:
         rows = []
         with open(index_filename, 'r') as url_file:
@@ -136,16 +127,19 @@ def download_volumes():
     if not Path(volumes_dir).exists():
         mkdir(volumes_dir)
 
+    global work_count
     t = time.time()
     with ThreadPool(num_threads) as pool:
-        for result in pool.imap_unordered(download_volume, get_volume_meta()):
-            pass  # yeild result: start text processing script thread
 
-    print("\n--- {} volumes downloaded in {} ---".format(len(volumes), get_rate(t)))
+        # Todo: insert meaningful script into forloop placeholder.
+        for result in pool.imap_unordered(download_volume, get_volume_meta()):
+            work_count += 1  # yeild result: start text processing script thread
+
+    print("\n--- {} volumes downloaded in {} ---".format(work_count, get_rate(t)))
 
 
 def download_volume(volume):
-    name = volume.name
+    name = volume['name']
     filepath = '{}/{}.csv'.format(volumes_dir, name)
 
     print('Downloading volume {}'.format(name))
@@ -174,10 +168,10 @@ def download_volume(volume):
         more_pages, url, _ = download_page(
             url.replace(hathi_domain, '', 1), pagecount)
     else:
-        url = volume.url
+        url = volume['url']
     while more_pages:
         pagecount += 1
-        condition, url, row = download_page(url, pagecount)
+        more_pages, url, row = download_page(url, pagecount)
         if row:
             while True:
                 with open(filepath, 'a') as txt_file:
@@ -190,22 +184,22 @@ def download_volume(volume):
         completion = 1
         filename = 'hathivolumeURLs.csv'
         rows = []
-        for row in get_index_rows():
+        for row in read_index_rows():
             if row['downloaded']:
                 completion += 1
-            elif volume.name == row['name']:
+            elif name == row['name']:
                 row['downloaded'] = True
             rows.append(row)
-        completion = round(100 * completion / num_volumes, 2)
+        percent = round(100 * completion / num_volumes, 2)
 
         while True:
             with open(filename, 'w') as url_file:
-                writer = csv.DictWriter(url_file, volumes_fieldnames)
+                writer = csv.DictWriter(url_file, index_fieldnames)
                 writer.writeheader()
                 for row in rows:
                     writer.writerow(row)
-            print('Volume {} complete! Downloading {}{} complete\n'.format(
-                name, completion, '%'))
+            print('Volume {} complete! Downloading {}{} ({}/{}) complete at {} after {}\n'.format(
+                name, percent, '%', completion, num_volumes, datetime.now(), get_rate(start_time)))
             break
 
 
@@ -280,13 +274,17 @@ def process_csv(arg):
 def main():
     try:
 
-        t = time.time()
-        with ThreadPool(8) as pool:
-            for result in pool.imap_unordered(process_csv, download_volumes()):
-                # print(result)
-                pass
-        print("\n--- {} volumes processed in {} ---".format(len(volumes), get_rate(t)))
+        download_volumes()
 
+        t = time.time()
+        # with ThreadPool(8) as pool:
+        #
+        #     # Todo: insert meaningful script into forloop placeholder.
+        #     for result in pool.imap_unordered(process_csv, download_volumes()):
+        #         # print(result)
+        #         pass
+
+        print("\n--- {} volumes processed in {} ---".format(work_count, get_rate(t)))
         print('Corpus compilation successful\n')
 
     except Exception as e:
