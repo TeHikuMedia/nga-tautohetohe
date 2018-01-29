@@ -13,7 +13,7 @@ indir = 'volumes'
 outdir = 'processed'
 # Processing the text is local resource intensive,
 # therefore number of threads should be comparable to the CPU specs.
-num_threads = 8
+num_threads = 1
 
 
 def get_file_list():
@@ -31,12 +31,12 @@ def process_csv_files():
 
 
 def process_csv(f):
-    print('\nProcessing {}:\n'.format(f))
+    print('Processing {}:\n'.format(f))
 
     volume = Volume(f)
     volume.process_pages()
 
-    print('{} processed at {} after {}\n'.format(
+    print('\n{} processed at {} after {}\n'.format(
         f, datetime.now(), get_rate()))
 
 
@@ -49,14 +49,14 @@ class Volume(object):
 
     def __init__(self, filename):
         self.filename = filename
-        row = {'volume': filename[:filename.index('.')]}
-        self.flag359 = int(row['volume'].isdigit()
-                           and int(row['volume']) >= 359)
-        self.flag410 = int(self.flag359 and int(row['volume']) >= 410)
-        self.row = row
-        self.url = ''
-        self.kaikōrero = ''
-        self.totals = {'format': 'OCR', 'incomplete': None}
+        self.day = {'format': 'OCR'}
+        self.totals = {}
+        self.row = {'utterance': 0}
+        self.day['volume'] = self.row['volume'] = filename[:filename.index(
+            '.csv')]
+        self.flag359 = int(self.row['volume'].isdigit()
+                           and int(self.row['volume']) >= 359)
+        self.flag410 = int(self.flag359 and int(self.row['volume']) >= 410)
 
     def process_pages(self):
         # Invoke this method from a class instance to process the debates.
@@ -70,7 +70,6 @@ class Volume(object):
         with open('{}/{}'.format(indir, self.filename), 'r') as kiroto:
             reader = csv.DictReader(kiroto)
             day = []
-            self.row['utterance'] = 0
             for page in reader:
                 if not (page['url'].endswith(('c', 'l', 'x', 'v', 'i')) or page['page'] == '1'):
                     day = self.__process_page(page, day)
@@ -90,10 +89,11 @@ class Volume(object):
                 day.append(text[:nextday.start()])
                 self.__process_day(day)
 
-                self.row['date'] = nextday.group(0)
-                self.row['url'] = page['url']
-                self.day.update(self.row)
-                self.day.retrieved = page['retreived']
+                day = []
+                self.row['date'] = self.day['date'] = clean_whitespace(
+                    nextday.group(0))
+                self.row['url'] = self.day['url'] = page['url']
+                self.day['retrieved'] = page['retreived']
                 self.row['utterance'] = 0
                 text = text[nextday.end():]
             else:
@@ -110,11 +110,11 @@ class Volume(object):
         self.__split_string(text, self.__process_paragraph, paragraph_pattern)
 
         # Write day statistics
+        self.day['percent'] = get_percentage(**self.totals)
         self.day.update(self.totals)
-        print(self.day['date'])
         with open('{}/{}{}'.format(outdir, self.row['volume'], 'rāindex.csv'), 'a') as output:
             writer = csv.DictWriter(output, self.dayfieldnames)
-            writer.writerow(self.totals)
+            writer.writerow(self.day)
 
     def __split_string(self, text, process_function, regex):
         while True:
@@ -124,32 +124,80 @@ class Volume(object):
                 text = text[nextstring.end():]
             else:
                 process_function(text)
+                break
 
     def __process_paragraph(self, text):
-        self.row['utterance'] += 1
         kaikōrero = newspeaker_pattern[self.flag410].match(text)
         if kaikōrero:
+            name = kaikōrero.group(0)
             # name = re.match(name_behaviour, kaikōrero.group(3))
-            # if name:
-            self.kaikōrero = name.group(0)
-            text = text[kaikōrero.end():]
+            index1 = re.search('[A-Z]', name)
+            if index1:
+                index2 = None
+                if name.endswith('—'):
+                    index2 = name.find('.—')
+                    if index2 < 0:
+                        index2 = name.find('. —')
+                elif name.endswith(':'):
+                    index2 = name.index(':')
+                name = clean_whitespace(name[index1.start():index2])
+                self.row['speaker'] = name
+                # print('Name:', name.group(0))
+                text = text[kaikōrero.end():]
 
-        # split_string(text, process_sentence, sentence_pattern)
-        # or:
-        self.__process_string(text)
+        self.__process_sentences(text)
 
-    def __process_string(self, text):
-        condition, nums = kupu_ratios(text)
-        for k, v in nums.items():
-            if k != 'percent':
-                self.totals[k] += v
+    def __process_sentences(self, text):
+        utterance = []
+        loopflag, consecutive = True, {'reo': False, 'other': False}
+        condition, nums = False, {}
 
-        if condition:
-            self.row.update({'text': clean_whitespace(text)})
+        while loopflag:
+            nextsentence = new_sentence.search(text)
+            if nextsentence:
+                sentence = text[:nextsentence.start() + 1]
+                text = text[nextsentence.end():]
+            else:
+                sentence = text
+                loopflag = False
+
+            condition, nums = kupu_ratios(sentence)
+            for k, v in nums.items():
+                if k != 'percent':
+                    self.totals[k] += v
+
+            if not sentence.startswith('NOE'):
+                if condition:
+                    sentence = clean_whitespace(sentence)
+                    if not consecutive['reo']:
+                        if utterance:
+                            self.__write_row(utterance)
+
+                        consecutive['reo'] = True
+                        consecutive['other'] = False
+                        self.row['utterance'] += 1
+                        utterance = [sentence]
+                    else:
+                        utterance.append(sentence)
+                elif not consecutive['other']:
+                    consecutive['other'] = True
+                    consecutive['reo'] = False
+                    self.row['utterance'] += 1
+
+            if not loopflag and utterance:
+                self.__write_row(utterance)
+
+    def __write_row(self, text):
+        text = ' '.join(text)
+        c, nums = kupu_ratios(text)
+
+        if not (nums['reo'] < 5 and nums['other'] + nums['ambiguous'] < 10):
+            self.row['text'] = text
             self.row.update(nums)
+            print(self.row['text'])
             with open('{}/{}{}'.format(outdir, self.row['volume'], 'reomāori.csv'), 'a') as output:
                 writer = csv.DictWriter(output, self.reofieldnames)
-                writer.writerow(row)
+                writer.writerow(self.row)
 
 
 def tilda2tohutō(matchchar):
@@ -167,11 +215,13 @@ date_pattern = re.compile(
 
 # Speaker pattern changes at volume 410 (19 May 1977). Pre-410 many passages are written
 # as a narrative, so will process it as whole paragraphs.
-newspeaker_pattern = [re.compile('([A-Z .:—-]*\n)*[A-Z]([^(\n]+\([^-—\n]+[-—]*\n)?[a-zA-Z". ()]+\. ?[-—]+(?!\n)'),
-                      re.compile('(([-~‘’\'() a-zA-Z]*\n)*)([^:\n]*:|([^,\n]*\n)[^:\n]*:)')]
+newspeaker_pattern = [re.compile(
+    '([A-Z .:—-]*\n)*[A-Z]([^(\n]+\([^-—\n]+[-—]*\n)?[a-zA-Z". ()]+\. ?[-—]+(?!\n)'),
+    re.compile(
+    '(([-~‘’\'() a-zA-Z]*\n)*)([^:\n]*:|([^,\n]*\n)[^:\n]*:)'),
+    re.compile(
+    '(\d{d}\. )?(((Rt\.?|Right) )?(Hon\. )?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+)([-—]+| \(|:)'.format(a=apostrophes, d='{1,2}'))]
 # name_behaviour = '((\d{1,2}\.|The) )?(((Rt\.?|Right) )?(Hon\. )?(Mr\. )?([A-Z]([a-z‘’\']+|[A-Z‘’\']+|\.?))([ -‘’\'][tA-Z]([öa-z‘’\']+|[ÖA-Z‘’\']+|\.?))+)([-—]+| \(|:)'
-name_pattern = re.compile('(\d{d}\. )?(((Rt\.?|Right) )?(Hon\. )?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+)([-—]+| \(|:)'.format(
-    a=apostrophes, d='{1,2}'))
 
 # Regex for splittting paragraphs
 paragraph_pattern = re.compile('(?<=([.!?]|[-—]))[-—.!? ‘’\'"•]*\n(?=[A-Z])')
