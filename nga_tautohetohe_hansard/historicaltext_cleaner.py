@@ -268,7 +268,7 @@ class Volume(object):
 
     def __write_row(self, text):
         text = ' '.join(text)
-        first_letter = re.search('[a-zA-Z]', text)
+        first_letter = re.search('[a-zA-Z£]', text)
         l = len(text)
         if first_letter and l > 3:
             text = text[first_letter.start():]
@@ -278,7 +278,7 @@ class Volume(object):
                 bad_egg = re.match(
                     '([^ ]{1,3} )+[^ ]{1,3}', text)
 
-            if not (bad_egg and len(bad_egg.group(0)) == l):
+            if not (bad_egg and bad_egg.group() == text):
                 c, nums = kupu_ratios(text, tohutō=False)
                 for k, v in nums.items():
                     if k != 'percent':

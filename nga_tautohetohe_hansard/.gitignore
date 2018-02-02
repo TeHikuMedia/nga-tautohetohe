@@ -1,0 +1,8 @@
+.cache/*
+__pycache__/*
+*.pyc
+*.pdf
+1987-2002/*
+volumes/*
+processed/*
+*.csv

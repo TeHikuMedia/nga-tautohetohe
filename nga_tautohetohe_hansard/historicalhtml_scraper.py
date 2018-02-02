@@ -257,7 +257,7 @@ def main():
 
         download_volumes()
         print('Hansard download successful\nProcessing text:')
-        historicalhansard_CSVcleaner.main()
+        historicaltext_cleaner.main()
 
     except Exception as e:
         raise e
