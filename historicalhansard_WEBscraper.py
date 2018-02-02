@@ -14,7 +14,7 @@ import historicalhansard_CSVcleaner
 hansard_url = 'https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'
 hathi_domain = 'https://babel.hathitrust.org'
 index_filename = 'hathivolumeURLs.csv'
-index_fieldnames = ['retreived', 'url', 'name',
+index_fieldnames = ['retrieved', 'url', 'name',
                     'period', 'session', 'downloaded', 'processed']
 volumes_dir = 'volumes'
 num_volumes = 488
@@ -37,7 +37,7 @@ def get_volume_meta():
     global complete
     incomplete = 0
 
-    # Check to see if all volume urls have been retreived and
+    # Check to see if all volume urls have been retrieved and
     # if any volumes have already been downloaded and processed:
     if Path(index_filename).exists():
         with write_lock:
@@ -91,7 +91,7 @@ def scrape_volume_url(tr):
     # Scrape data from each cell of each row of Hansard table
     row = {}
     row_cells = tr('td')
-    switch = name = retreived = href = period = session = ''
+    switch = ''
     for cell in row_cells:
         if cell.a:
             for a in cell('a'):
@@ -100,7 +100,7 @@ def scrape_volume_url(tr):
                     row['name'] = a.string.strip()
                     row['url'] = download_soup(a['href']).select(
                         '.accessOverview')[0].p.a['href']
-                    row['retreived'] = datetime.now()
+                    row['retrieved'] = datetime.now()
         else:
             if switch:
                 row['session'] = cell.get_text().strip()
@@ -145,7 +145,7 @@ def download_volume(volume):
                 pagecount = int(row['page'])
     else:
         with open(filepath, 'w') as txt_file:
-            fieldnames = ['retreived', 'url', 'page', 'text']
+            fieldnames = ['retrieved', 'url', 'page', 'text']
             writer = csv.DictWriter(
                 txt_file, fieldnames)
             writer.writeheader()
@@ -196,7 +196,7 @@ def download_page(url, page):
     page_soup = soup.find(id='mdpPage')
     text = page_soup.find(class_='Text')
     if text:
-        row = {'retreived': datetime.now(), 'url': url, 'page': page,
+        row = {'retrieved': datetime.now(), 'url': url, 'page': page,
                'text': text.string}
 
     url = ''

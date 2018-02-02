@@ -12,7 +12,7 @@ from os.path import isfile, join, exists
 indir = 'volumes'
 outdir = 'processed'
 index_filename = 'hathivolumeURLs.csv'
-volumeindex_fieldnames = ['retreived', 'url', 'name',
+volumeindex_fieldnames = ['retrieved', 'url', 'name',
                           'period', 'session', 'downloaded', 'processed']
 dayindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other',
                        'percent', 'retrieved', 'format', 'incomplete']
@@ -32,7 +32,7 @@ def get_file_list():
     for v in volume_list:
         for f in file_list:
             if v['name'] == f[:f.index('.csv')] and not v['processed']:
-                yield f
+                yield f, v
 
 
 def read_index_rows():
@@ -78,19 +78,20 @@ def process_csv_files():
             writer.writerows(r_rows)
 
 
-def process_csv(f):
+def process_csv(args):
+    f = args[0]
+    v = args[1]
     print('Extracting corpus from {}:'.format(f))
 
-    volume = Volume(f)
+    volume = Volume(f, v)
     volume.process_pages()
-    name = f[:f.index('.csv')]
 
     # Update the record of processed volumes:
     with write_lock:
         completion = 1
         rows = []
         for row in read_index_rows():
-            if name == row['name']:
+            if v['name'] == row['name']:
                 row['processed'] = True
             rows.append(row)
 
@@ -100,19 +101,21 @@ def process_csv(f):
                 writer.writeheader()
                 writer.writerows(rows)
             break
-    return name
+    return v['name']
 
 
 class Volume(object):
     """docstring for Volume."""
 
-    def __init__(self, filename):
+    def __init__(self, filename, v):
         self.filename = filename
         self.day = {'format': 'OCR'}
         self.totals = {}
         self.row = {'utterance': 0}
-        self.day['volume'] = self.row['volume'] = filename[:filename.index(
-            '.csv')]
+        self.day['volume'] = self.row['volume'] = v['name']
+        self.day['url'] = self.row['url'] = v['url']
+        self.day['date'] = v['period']
+        self.day['retrieved'] = v['retrieved']
         self.flag294 = int(self.row['volume'].isdigit()
                            and int(self.row['volume']) >= 294)
         self.flag410 = int(self.flag294 and int(self.row['volume']) >= 410)
@@ -140,9 +143,15 @@ class Volume(object):
         while True:
             nextday = date_pattern[self.flag294].search(text)
             if nextday:
-                previoustext = header_pattern.sub(
-                    '', text[:nextday.start()], 1)
-                day.append(previoustext)
+                header = previoustext = None
+                if not looped:
+                    header = header_pattern.match(text[:nextday.start()])
+                if header:
+                    previoustext = text[header.end():nextday.start()]
+                else:
+                    previoustext = text[:nextday.start()]
+                if previoustext:
+                    day.append(previoustext.strip())
                 self.__process_day(day)
 
                 day = []
@@ -154,15 +163,17 @@ class Volume(object):
                 text = text[nextday.end():]
                 looped += 1
             else:
-                if looped:
-                    day.append(text)
-                else:
-                    day.append(header_pattern.sub('', text, 1))
+                if not looped:
+                    header = header_pattern.match(text)
+                    if header:
+                        text = text[header.end():]
+                if text:
+                    day.append(text.strip())
                 break
         return day
 
     def __process_day(self, day):
-        text = ''.join(day)
+        text = '\n'.join(day)
 
         # Remove hyphenated line breaks
         text = re.sub('(?<=[a-z]) *-\n+ *(?=[a-z])', '', text)
@@ -203,27 +214,12 @@ class Volume(object):
     def __process_paragraph(self, text, utterance):
         kaikōrero = newspeaker_pattern[self.flag410].match(text)
         if kaikōrero:
-            name = ''
-            if self.flag410:
-                speaker = newspeaker_pattern[2].match(kaikōrero.group(3))
-                if speaker:
-                    name = speaker.group(2)
-            else:
-                speaker = kaikōrero.group(0)
-                index1 = re.search('[A-Z]', speaker)
-                if index1:
-                    index2 = None
-                    if speaker.endswith('—'):
-                        index2 = re.search('(:|(. ?))?—', speaker).start()
-                    elif speaker.endswith(':'):
-                        index2 = speaker.index(':')
-                    name = clean_whitespace(speaker[index1.start():index2])
-
+            name = kaikōrero.group(1)
             if name:
                 if utterance:
                     self.__write_row(utterance)
                     utterance = []
-                self.row['speaker'] = name
+                self.row['speaker'] = clean_whitespace(name)
                 text = text[kaikōrero.end():]
 
         return self.__process_sentences(text, utterance)
@@ -242,7 +238,7 @@ class Volume(object):
                 sentence = text
                 loopflag = False
 
-            c, nums = kupu_ratios(sentence)
+            c, nums = kupu_ratios(sentence, tohutō=False)
             if c:
                 sentence = clean_whitespace(sentence)
                 if consecutive['reo']:
@@ -262,39 +258,47 @@ class Volume(object):
                     consecutive['reo'] = False
                     self.row['utterance'] += 1
 
-                for k, v in nums.items():
-                    if k != 'percent':
-                        self.totals[k] += v
+                if len(sentence) > 5:
+                    for k, v in nums.items():
+                        if k != 'percent':
+                            self.totals[k] += v
 
             if not loopflag:
                 return utterance
 
     def __write_row(self, text):
         text = ' '.join(text)
-        text = text[re.search('[a-zA-Z]', text).start():]
-        bad_egg = re.match(
-            '[A-Z][^ ]*(([^a-zA-Z]+[^ A-Z]*){1,2}[A-Z][^ ]*)*(([^a-zA-Z]+[^ A-Z]*){2})?', text)
+        first_letter = re.search('[a-zA-Z]', text)
+        l = len(text)
+        if first_letter and l > 3:
+            text = text[first_letter.start():]
+            bad_egg = re.match(
+                '([^ A-Z]+ )?[A-Z][^ ]*(([^a-zA-Z]+[^ A-Z]*){1,2}[A-Z][^ ]*)*(([^a-zA-Z]+[^ A-Z]*){2})?', text)
+            if not bad_egg:
+                bad_egg = re.match(
+                    '([^ ]{1,3} )+[^ ]{1,3}', text)
 
-        if not (bad_egg and len(bad_egg.group(0)) == len(text)):
-            c, nums = kupu_ratios(text)
-            for k, v in nums.items():
-                if k != 'percent':
-                    self.totals[k] += v
+            if not (bad_egg and len(bad_egg.group(0)) == l):
+                c, nums = kupu_ratios(text, tohutō=False)
+                for k, v in nums.items():
+                    if k != 'percent':
+                        self.totals[k] += v
 
-            if c and not (nums['reo'] < 5 and nums['other'] + nums['ambiguous'] < 10):
-                self.row['text'] = text
-                self.row.update(nums)
-                print(self.row['text'])
-                with open('{}/{}{}'.format(outdir, self.row['volume'], 'reomāori.csv'), 'a') as output:
-                    writer = csv.DictWriter(output, reo_fieldnames)
-                    writer.writerow(self.row)
+                # and not (nums['reo'] < 5 and nums['other'] + nums['ambiguous'] < 10):
+                if c and nums['reo'] > 2 and nums['other'] < 20:
+                    self.row['text'] = text
+                    self.row.update(nums)
+                    print(self.row['text'])
+                    with open('{}/{}{}'.format(outdir, self.row['volume'], 'reomāori.csv'), 'a') as output:
+                        writer = csv.DictWriter(output, reo_fieldnames)
+                        writer.writerow(self.row)
 
 
 # New header pattern from volume 359 onwards (5 Dec 1968), 440 onwards - first 3 lines, 466 onward - 1 line
 header_pattern = re.compile(
-    '[^\n]*\n((([^\n\]]*\n){0,5}[^\n]*\][^\n]*)\n)?((([^ \n]+( [^ \n,—]+){0,3}))\n)*(([^a-z][^\n:—]*( [^a-z\n][^ —:\n]*){2}[^-\n:]\n)+)*')
+    '[^\n]*\n((([^\n\]]*\n){0,5}[^\n]*\][^\n]*)\n)?((([^ \n]+( [^ \n,—]+){0,3}))\n)*(([^a-z]([^\n:—](?!([^a-zA-Z]+[a-z]+){3}))*( (?!O )[^a-z\n][^ —:\n]*){2}[^\-\n:]\n)+)*')
 # best catch-all header pattern so far:
-# ,"[^\n]*\n((([^\n]*\n){0,5}[^\n]*\][^\n]*)\n)?((([^ \n]+( [^ \n,—]+){0,3}))\n)*(([^a-z][^\n:—]*( [^a-z\n][^ —:\n]*){2}[^-\n:]\n)+)*
+# ',"[^\n]*\n((([^\n\]]*\n){0,5}[^\n]*\][^\n]*)\n)?((([^ \n]+( [^ \n,—]+){0,3}))\n)*(([^a-z]([^\n:—](?!([^a-zA-Z]+[a-z]+){3}))*( (?!O )[^a-z\n][^ —:\n]*){2}[^-\n:]\n)+)*'
 
 
 # Regex to look for meeting date. Date pattern changes from vol 294 onwards
@@ -305,16 +309,16 @@ date_pattern = [re.compile(
 # Speaker pattern changes at volume 410 (19 May 1977). Pre-410 many passages are written
 # as a narrative, so will process it as whole paragraphs.
 newspeaker_pattern = [re.compile(
-    '([A-Z .:—-]*\n)*[A-Z]([^(\n]+\([^-—\n]+[-—]*\n)?[a-zA-Z". ()]+\. ?[-—]+(?!\n)'),
+    '[^a-zA-Z\n]*([A-Z][^—:\n]*( ?[A-Z]){3,}(\s*\([a-zA-Z\s]*\))?)(((\.? ?—\-?)\s*(?=[A-Z£]))|[^a-zA-Z]+(?=said|asked|wished|did|in|replied|hoped|was|thought|supported|desired|obtained|moved|having|by|brought|seconded|announ(c|e)ed))'),
     re.compile(
-    '(([-~‘’\'() a-zA-Z]*\n)*)([^:\n]*:|([^,\n]*\n)[^:\n]*:)'),
-    re.compile(
-    '((\d{d}\.|The) )?(((Rt\.?|Right) )?(Hon\. )?(Mr\. )?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+)([-—]+| \(|:)'.format(a=apostrophes, d='{1,2}'))]
+    '([A-Z][^\n]*[)A-Z])(\s+replied)?[:;]')]
+# Previous versions:
+# NEW vs
+# '(([-~‘’\'() a-zA-Z]*\n)*)([^:\n]*:|([^,\n]*\n)[^:\n]*:)'
+# '((\d{d}\.|The) )?(((Rt\.?|Right) )?(Hon\. )?(Mr\. )?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+)([-—]+| \(|:)'.format(a=apostrophes, d='{1,2}')
 # name_behaviour = '((\d{1,2}\.|The) )?(((Rt\.?|Right) )?(Hon\. )?(Mr\. )?([A-Z]([a-z‘’\']+|[A-Z‘’\']+|\.?))([ -‘’\'][tA-Z]([öa-z‘’\']+|[ÖA-Z‘’\']+|\.?))+)([-—]+| \(|:)'
-
-# Regex for splittting paragraphs
-paragraph_pattern = re.compile(
-    '(?<=([.!?]|[-—]))[-—.!? ‘’\'"•]*\n["\']*(?=[A-Z])')
+# old vs
+# '([A-Z .:—-]*\n)*[A-Z]([^(\n]+\([^-—\n]+[-—]*\n)?[a-zA-Z". ()]+\. ?[-—]+(?!\n)'
 
 
 def main():
