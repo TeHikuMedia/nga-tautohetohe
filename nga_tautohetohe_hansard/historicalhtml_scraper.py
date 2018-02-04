@@ -16,8 +16,8 @@ hathi_domain = 'https://babel.hathitrust.org'
 index_filename = 'hathivolumeURLs.csv'
 index_fieldnames = ['retrieved', 'url', 'name',
                     'period', 'session', 'downloaded', 'processed']
-volumes_dir = 'volumes'
-num_volumes = 488
+volumes_dir = '1854-1987'
+num_volumes = 488 - 4  # 4 sources contain 2 volumes combined
 complete = 0
 # Hathi network can download 100+ pages between errors,
 # so 100+ threads will maximise concurrent page download speed
@@ -81,10 +81,13 @@ def scrape_volume_urls(count):
     volume_directory = download_soup(
         hansard_url).select('.wikitable')[0]('tr')[count + 1:num_volumes + 1]
 
+    previous_result = None
+
     results = None
     with ThreadPool(num_volumes - count if num_threads > num_volumes - count else num_threads) as pool:
         for result in pool.imap(scrape_volume_url, volume_directory):
-            yield result
+            if not (previous_result and result['url'] == previous_result['url']):
+                yield result
 
 
 def scrape_volume_url(tr):

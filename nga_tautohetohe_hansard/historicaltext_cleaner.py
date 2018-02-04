@@ -9,7 +9,7 @@ from os import listdir, makedirs
 from multiprocessing.dummy import Process, Pool as ThreadPool, Lock
 from os.path import isfile, join, exists
 
-indir = 'volumes'
+indir = '1854-1987'
 outdir = 'processed'
 index_filename = 'hathivolumeURLs.csv'
 volumeindex_fieldnames = ['retrieved', 'url', 'name',
