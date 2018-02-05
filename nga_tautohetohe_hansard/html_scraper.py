@@ -63,7 +63,7 @@ class HansardTuhingaScraper:
         meta_data = self.metasoup.find_all('tr')
         for tr in meta_data:
             meta_entries[tr.th.get_text(" ", strip=True).lower()
-                     ] = tr.td.get_text(" ", strip=True)
+                         ] = tr.td.get_text(" ", strip=True)
         i_row = c_row = {'url': self.doc_url,
                          'volume': meta_entries['ref'][-3:], 'date': meta_entries['date']}
         i_row.update({'retrieved': self.retrieved, 'incomplete': ''})
@@ -110,7 +110,8 @@ class HansardTuhingaScraper:
                     if save_corpus or check:
                         c_row.update(nums)
                         c_row['text'] = clean_whitespace(kōrero)
-                        print('{date}: {title}\nutterance {utterance}, Maori = {reo}%\nname:{speaker}\n{text}\n'.format(title=meta_entries['short title'), **c_row)
+                        print('{date}: {title}\nutterance {utterance}, Maori = {reo}%\nname:{speaker}\n{text}\n'.format(
+                            title=meta_entries['short title'], **c_row))
                         c_rows.append(c_row)
         print('Time:', self.retreived)
         i.row['percent'] = get_percentage(totals)

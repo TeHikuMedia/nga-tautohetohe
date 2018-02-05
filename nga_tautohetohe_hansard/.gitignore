@@ -4,6 +4,5 @@ __pycache__/*
 *.pdf
 1987-2002/*
 1854-1987/*
-volumes/*
 processed/*
 *.csv

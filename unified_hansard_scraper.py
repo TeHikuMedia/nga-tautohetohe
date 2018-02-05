@@ -1,11 +1,8 @@
-import sys
-sys.path.append(os.path.dirname(__file__) + "/nga_tautohetohe_hansard")
-import historicalhtml_cleaner
-import html_scraper
-import pdf_scraper
+from nga_tautohetohe_hansard import historicalhtml_scraper, historicaltext_cleaner, pdf_scraper, html_scraper
 
 
 def main():
+    historicalhtml_scraper.main()
     historicaltext_cleaner.main()
     pdf_scraper.main()
     html_scraper.main()

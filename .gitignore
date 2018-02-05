@@ -3,6 +3,6 @@ __pycache__/*
 *.pyc
 *.pdf
 1987-2002/*
-volumes/*
+1854-1987/*
 processed/*
 *.csv

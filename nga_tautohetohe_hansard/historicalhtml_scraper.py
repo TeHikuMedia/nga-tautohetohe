@@ -9,7 +9,6 @@ from urllib.request import urlopen
 from bs4 import BeautifulSoup as bs
 from datetime import datetime
 from taumahi import *
-import historicalhansard_CSVcleaner
 
 hansard_url = 'https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'
 hathi_domain = 'https://babel.hathitrust.org'
@@ -260,7 +259,6 @@ def main():
 
         download_volumes()
         print('Hansard download successful\nProcessing text:')
-        historicaltext_cleaner.main()
 
     except Exception as e:
         raise e
