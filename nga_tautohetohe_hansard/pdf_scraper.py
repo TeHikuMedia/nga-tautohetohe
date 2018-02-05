@@ -150,11 +150,12 @@ def tuhituhikifile(volume, debates, index_writer, corpus_writer):
                         paragraph.txt), 'speaker': speech.kaikōrero})
                     c_row.update(paragraph.ratios)
                     print(
-                        'Volume {volume}: {date}\n{speaker}: {utterance},\nMaori = {percent}%\n{text}\n'.format(**row))
+                        'Volume {volume}: {date}\n{speaker}: {utterance},\nMaori = {percent}%\n{text}\n'.format(**c_row))
                     corpus_writer.writerow(c_row)
 
                 for k, v in paragraph.ratios.items():
-                    totals[k] += v
+                    if k != 'percent':
+                        totals[k] += v
         i_row.update({'percent': get_percentage(**totals), 'format': 'PDF'})
         i_row.update(totals)
         index_writer.writerow(i_row)
