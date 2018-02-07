@@ -1,17 +1,22 @@
 # import libraries
 import csv
-from pathlib import Path
 import time
 from datetime import datetime
 import re
 from taumahi import *
 from os import listdir
-from os.path import isfile, join
+from os.path import isfile, join, exists
 
-dayindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other',
-                       'percent', 'retrieved', 'format', 'incomplete']
+volumeindex_filename = 'hansardvolumeindex.csv'
+rāindexfilename = 'hansardrāindex.csv'
+corpusfilename = 'hansardreomāori.csv'
+volumeindex_fieldnames = ['retrieved', 'url', 'name',
+                          'period', 'session', 'downloaded', 'processed']
+rāindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other',
+                      'percent', 'retrieved', 'format', 'incomplete']
 reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo',
                   'ambiguous', 'other', 'percent', 'text']
+url = 'https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CRGZkMWNfeXoybmc'
 
 
 class Speech:
@@ -35,39 +40,57 @@ page_break = re.compile('(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)')
 
 
 def process_txt_files(dirpath):
-    corpusfilename = 'hansardreomāori.csv'
-    indexfilename = 'hansardrāindex.csv'
-
-    if not exists('hansardrāindex.csv'):
-        with open('hansardrāindex.csv', 'w') as f:
-            writer = csv.DictWriter(f, dayindex_fieldnames)
+    if not exists(rāindexfilename):
+        with open(rāindexfilename, 'w') as f:
+            writer = csv.DictWriter(f, rāindex_fieldnames)
             writer.writeheader()
-    if not exists('hansardreomāori.csv'):
-        with open('hansardreomāori.csv', 'w') as f:
+    if not exists(corpusfilename):
+        with open(corpusfilename, 'w') as f:
             writer = csv.DictWriter(f, reo_fieldnames)
             writer.writeheader()
 
-    with open('hansardrāindex.csv', 'a') as i, open('hansardreomāori.csv', 'a') as c:
-        index_writer = csv.DictWriter(i, dayindex_fieldnames)
+    with open(rāindexfilename, 'a') as i, open(corpusfilename, 'a') as c:
+        index_writer = csv.DictWriter(i, rāindex_fieldnames)
         corpus_writer = csv.DictWriter(c, reo_fieldnames)
-        index_writer.writerows(i_rows)
-        corpus_writer.writerows(r_rows)
-        for f in get_file_list(dirpath):
+        v_row = {'url': url, 'downloaded': True, 'processed': True}
+        for f, v in get_file_list(dirpath):
             print('\nProcessing {}:\n'.format(f))
             with open('{}/{}'.format(dirpath, f), 'r') as hansard_txt:
                 txt = sub_vowels(page_break.sub('\n', hansard_txt.read()))
                 txt = re.sub(r'\[[^\]]*]', '', txt)
-                tuhituhikifile(f, get_daily_debates(
+                tuhituhikifile(v, get_daily_debates(
                     txt), index_writer, corpus_writer)
+            with open(volumeindex_filename, 'a') as vol_file:
+                writer = csv.DictWriter(vol_file, volumeindex_fieldnames)
+                v_row['name'] = v
+                writer.writerow(v_row)
             print('{} processed at {} after {}\n'.format(
                 f, datetime.now(), get_rate()))
 
 
 def get_file_list(dirpath):
-    files = [f for f in listdir(dirpath) if isfile(
+    volume_list = read_index_rows()
+    file_list = [f for f in listdir(dirpath) if isfile(
         join(dirpath, f)) and f.endswith('.txt')]
-    files.sort()
-    return files
+    file_list.sort()
+
+    for f in file_list:
+        name = f[f.index(' ') + 1:f.index('.txt')]
+        for v in volume_list:
+            if v['name'] == name and v['processed']:
+                break
+        else:
+            yield f, name
+
+
+def read_index_rows():
+    while True:
+        rows = []
+        with open(volumeindex_filename, 'r') as url_file:
+            reader = csv.DictReader(url_file)
+            for row in reader:
+                rows.append(row)
+            return rows
 
 
 # Regex to look for meeting date then split into date-debate key-value map
@@ -139,12 +162,13 @@ def get_speeches(txt):
 def tuhituhikifile(volume, debates, index_writer, corpus_writer):
     for date, speeches in reversed(debates):
         totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
-        i_row = c_row = {'volume': volume[volume.index(
-            ' ') + 1:volume.index(':')], 'date': date}
-        c_row['utterance'] = 0
+        i_row = {'url': url, 'volume': volume, 'date': date}
+        c_row = {'utterance': 0}
+        for k, v in i_row.items():
+            c_row[k] = v
         for speech in speeches:
             for paragraph in speech.paragraphs:
-                row['utterance'] += 1
+                c_row['utterance'] += 1
                 if paragraph.condition:
                     c_row.update({'text': clean_whitespace(
                         paragraph.txt), 'speaker': speech.kaikōrero})
@@ -165,13 +189,14 @@ def tuhituhikifile(volume, debates, index_writer, corpus_writer):
 
 def main():
     try:
+        print('Processing PDF volumes 1987-2002:')
         process_txt_files(dirpath='1987-2002')
-        print('Corpus compilation successful\n')
+        print('PDF Corpus compilation successful')
     except Exception as e:
-        print(e)
+        raise e
     finally:
-        print("\n--- Job took {} ---".format(get_rate()))
-        print('Looped through {} strings while processing {}\n'.format(
+        print("--- Job took {} ---".format(get_rate()))
+        print('Looped through {} strings while processing {}'.format(
             most_loops, longest_day))
 
 

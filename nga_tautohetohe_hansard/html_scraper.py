@@ -10,16 +10,18 @@ from taumahi import *
 
 hansard_url = 'https://www.parliament.nz'
 hansard_meta_url = '{}{}'.format(hansard_url, '/en/document/')
-dayindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other',
-                       'percent', 'retrieved', 'format', 'incomplete']
+rāindexfilename = 'hansardrāindex.csv'
+corpusfilename = 'hansardreomāori.csv'
+rāindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other',
+                      'percent', 'retrieved', 'format', 'incomplete']
 reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo',
                   'ambiguous', 'other', 'percent', 'text']
 
 
 class HansardTuhingaScraper:
-    def __init__(self, doc_url):
+    def __init__(self, url):
         ''' Set up our tuhituhi CorpusCollector with basic params '''
-        self.doc_url = doc_url
+        self.url = url
         self.soup = self.metasoup = self.kōrero_hupo = None
         self.hanga_hupo()
         self.retrieved = datetime.now()
@@ -27,18 +29,18 @@ class HansardTuhingaScraper:
     def hanga_hupo(self):
         # query the website and parse the returned html using beautiful soup
 
-        doc_id = self.doc_url.split('/')[6]
+        doc_id = self.url.split('/')[6]
         alternative_URL = '{}{}'.format(hansard_meta_url, doc_id)
         get_stuff = ''
         exception_flag = None
 
         try:
-            get_stuff = urlopen('{}{}'.format(hansard_url, self.doc_url))
+            get_stuff = urlopen('{}{}'.format(hansard_url, self.url))
         except Exception as e:
             print(e, '\nTrying alternative URL...')
             try:
                 get_stuff = urlopen(alternative_URL)
-                exception_flag, self.doc_url = True, alternative_URL
+                exception_flag, self.url = True, alternative_URL
                 print('\nSuccess!\n')
             except Exception as e:
                 raise Exception(e, '\nCould not find data')
@@ -59,17 +61,20 @@ class HansardTuhingaScraper:
         self.metasoup = bs(urlopen(meta_url), 'html.parser').table
 
     def horoi_transcript_factory(self):
-        c_rows, meta_entries = [], {}
+        meta_entries = {}
         meta_data = self.metasoup.find_all('tr')
         for tr in meta_data:
             meta_entries[tr.th.get_text(" ", strip=True).lower()
                          ] = tr.td.get_text(" ", strip=True)
-        i_row = c_row = {'url': self.doc_url,
-                         'volume': meta_entries['ref'][-3:], 'date': meta_entries['date']}
+        i_row = {'url': self.url,
+                 'volume': meta_entries['ref'][-3:], 'date': meta_entries['date']}
+        c_rows, c_row = [], {'utterance': 0}
+        totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
+        for k, v in i_row.items():
+            c_row[k] = v
         i_row.update({'retrieved': self.retrieved, 'incomplete': ''})
-        totals, c_row['utterance'] = {'reo': 0, 'ambiguous': 0, 'other': 0}, 0
 
-        print('\n{}\n'.format(doc_url))
+        print('\n{}\n'.format(self.url))
 
         for section in self.kōrero_hupo:
             p_list = section.find_all('p')
@@ -98,23 +103,22 @@ class HansardTuhingaScraper:
                         kōrero = p
 
                 if re.search(r'[a-zA-Z]', kōrero):
-                    paragraph_count += 1
                     c_row['utterance'] += 1
 
                     save_corpus, nums = kupu_ratios(kōrero)
 
-                    for k, v in nums:
+                    for k, v in nums.items():
                         if k != 'percent':
                             totals[k] += v
 
-                    if save_corpus or check:
+                    if (save_corpus and nums['reo'] > 2) or check:
                         c_row.update(nums)
                         c_row['text'] = clean_whitespace(kōrero)
                         print('{date}: {title}\nutterance {utterance}, Maori = {reo}%\nname:{speaker}\n{text}\n'.format(
                             title=meta_entries['short title'], **c_row))
-                        c_rows.append(c_row)
-        print('Time:', self.retreived)
-        i.row['percent'] = get_percentage(totals)
+                        c_rows.append(dict(c_row))
+        print('Time:', self.retrieved)
+        i_row['percent'] = get_percentage(**totals)
         i_row.update(totals)
         return c_rows, i_row
 
@@ -179,15 +183,11 @@ def get_new_urls(last_url):
 
 def aggregate_hansard_corpus(doc_urls):
     c_rows = []
-
-    corpusfilename = 'hansardreomāori.csv'
-    indexfilename = 'hansardrāindex.csv'
-
     record_list = []
     waiting_for_reo = []
 
-    if Path(indexfilename).exists():
-        with open(indexfilename, 'r') as i:
+    if Path(rāindexfilename).exists():
+        with open(rāindexfilename, 'r') as i:
             record_list = [row for row in csv.DictReader(i)]
 
             # rowcount = 0
@@ -198,8 +198,8 @@ def aggregate_hansard_corpus(doc_urls):
             #         waiting_for_reo.append(rowcount)
             #     rowcount += 1
     else:
-        with open(indexfilename, 'w') as i:
-            i_writer = csv.DictWriter(i, dayindex_fieldnames)
+        with open(rāindexfilename, 'w') as i:
+            i_writer = csv.DictWriter(i, rāindex_fieldnames)
             i_writer.writeheader()
 
     if not Path(corpusfilename).exists():
@@ -216,7 +216,7 @@ def aggregate_hansard_corpus(doc_urls):
         for record in doc_urls:
             if cond:
                 remaining_urls.append(record)
-            if last_record_url == record['url']:
+            if last_record_url == record:
                 cond = True
 
         if not cond:
@@ -224,24 +224,22 @@ def aggregate_hansard_corpus(doc_urls):
     else:
         remaining_urls = doc_urls
 
-    with open(indexfilename, 'a') as i, open(corpusfilename, 'a') as c:
-        index_writer = csv.DictWriter(i, dayindex_fieldnames)
+    with open(rāindexfilename, 'a') as i, open(corpusfilename, 'a') as c:
+        index_writer = csv.DictWriter(i, rāindex_fieldnames)
         corpus_writer = csv.DictWriter(c, reo_fieldnames)
 
         for doc_url in remaining_urls:
-            corpus_writer(doc_url, index_writer, corpus_writer)
+            c_rows, i_row = HansardTuhingaScraper(
+                doc_url).horoi_transcript_factory()
+
+            index_writer.writerow(i_row)
+            if c_rows:
+                corpus_writer.writerows(c_rows)
 
             print('---\n')
 
 
-def corpus_writer(doc_url, index_writer, corpus_writer):
-    c_rows, i_row = HansardTuhingaScraper(
-        doc_url).horoi_transcript_factory()
-
-    index_writer.writerow(i_row)
-    if c_rows:
-        for c_row in c_rows:
-            corpus_writer.writerow(c_row)
+# def corpus_writer(doc_url, index_writer, corpus_writer):
 
 
 def main():
@@ -251,8 +249,8 @@ def main():
     hansard_doc_urls = scrape_Hansard_URLs()
     aggregate_hansard_corpus(hansard_doc_urls)
 
-    print('Corpus compilation successful\n')
-    print("\n--- Job took %s seconds ---\n" % (time.time() - start_time))
+    print('Historical scrapingCorpus successful')
+    print("--- Job took %s seconds ---\n" % (time.time() - start_time))
 
 
 if __name__ == '__main__':

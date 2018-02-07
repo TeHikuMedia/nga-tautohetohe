@@ -12,7 +12,7 @@ from taumahi import *
 
 hansard_url = 'https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'
 hathi_domain = 'https://babel.hathitrust.org'
-index_filename = 'hathivolumeURLs.csv'
+volumeindex_filename = 'hansardvolumeindex.csv'
 index_fieldnames = ['retrieved', 'url', 'name',
                     'period', 'session', 'downloaded', 'processed']
 volumes_dir = '1854-1987'
@@ -31,14 +31,14 @@ start_time = time.time()
 
 
 def get_volume_meta():
-    print('Getting volume URLs:\n')
+    print('Getting volume URLs:')
     volumes = []
     global complete
     incomplete = 0
 
     # Check to see if all volume urls have been retrieved and
     # if any volumes have already been downloaded and processed:
-    if Path(index_filename).exists():
+    if Path(volumeindex_filename).exists():
         with write_lock:
             for row in read_index_rows():
                 if row['downloaded']:
@@ -49,7 +49,7 @@ def get_volume_meta():
                     yield row
     total = complete + incomplete
     if not total:
-        with write_lock, open(index_filename, 'w') as url_file:
+        with write_lock, open(volumeindex_filename, 'w') as url_file:
             writer = csv.DictWriter(url_file, index_fieldnames)
             writer.writeheader()
 
@@ -57,21 +57,22 @@ def get_volume_meta():
     if total < num_volumes:
         for row in scrape_volume_urls(total):
             while True:
-                with write_lock, open(index_filename, 'a') as url_file:
+                with write_lock, open(volumeindex_filename, 'a') as url_file:
                     writer = csv.DictWriter(url_file, index_fieldnames)
                     writer.writerow(row)
                     break
             yield row
-    print('\nCollected Hathi volume URLs after {}'.format(get_rate(start_time)))
+    print('Collected Hathi volume URLs after {}'.format(get_rate(start_time)))
 
 
 def read_index_rows():
     while True:
         rows = []
-        with open(index_filename, 'r') as url_file:
+        with open(volumeindex_filename, 'r') as url_file:
             reader = csv.DictReader(url_file)
             for row in reader:
-                rows.append(row)
+                if not (row['name'].isdigit() and int(row['name']) > 482):
+                    rows.append(row)
             return rows
 
 
@@ -125,7 +126,7 @@ def download_volumes():
         for result in pool.imap_unordered(download_volume, get_volume_meta()):
             work_count += 1  # yeild result: start text processing script thread
 
-    print("\n--- {} volumes downloaded in {} ---".format(work_count, get_rate(t)))
+    print("--- {} volumes downloaded in {} ---".format(work_count, get_rate(t)))
 
 
 def download_volume(volume):
@@ -182,7 +183,7 @@ def download_volume(volume):
         percent = round(100 * completion / num_volumes, 2)
 
         while True:
-            with open(index_filename, 'w') as url_file:
+            with open(volumeindex_filename, 'w') as url_file:
                 writer = csv.DictWriter(url_file, index_fieldnames)
                 writer.writeheader()
                 writer.writerows(rows)
@@ -256,14 +257,14 @@ def download_soup(url):
 
 def main():
     try:
-
+        print('Downloading volumes 1854-1987:')
         download_volumes()
-        print('Hansard download successful\nProcessing text:')
+        print('Hansard download successful.')
 
     except Exception as e:
         raise e
     finally:
-        print("\n--- Job took {} ---".format(get_rate(start_time)))
+        print("--- Job took {} ---\n".format(get_rate(start_time)))
 
 
 def get_rate(t):

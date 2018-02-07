@@ -11,7 +11,9 @@ from os.path import isfile, join, exists
 
 indir = '1854-1987'
 outdir = 'processed'
-index_filename = 'hathivolumeURLs.csv'
+volumeindex_filename = 'hansardvolumeindex.csv'
+rāindexfilename = 'hansardrāindex.csv'
+corpusfilename = 'hansardreomāori.csv'
 volumeindex_fieldnames = ['retrieved', 'url', 'name',
                           'period', 'session', 'downloaded', 'processed']
 dayindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other',
@@ -38,10 +40,11 @@ def get_file_list():
 def read_index_rows():
     while True:
         rows = []
-        with open(index_filename, 'r') as url_file:
+        with open(volumeindex_filename, 'r') as url_file:
             reader = csv.DictReader(url_file)
             for row in reader:
-                rows.append(row)
+                if not (row['name'].isdigit() and int(row['name']) > 482):
+                    rows.append(row)
             return rows
 
 
@@ -49,12 +52,12 @@ def process_csv_files():
     if not exists(outdir):
         makedirs(outdir)
 
-    if not exists('hansardrāindex.csv'):
-        with open('hansardrāindex.csv', 'w') as f:
+    if not exists(rāindexfilename):
+        with open(rāindexfilename, 'w') as f:
             writer = csv.DictWriter(f, dayindex_fieldnames)
             writer.writeheader()
-    if not exists('hansardreomāori.csv'):
-        with open('hansardreomāori.csv', 'w') as f:
+    if not exists(corpusfilename):
+        with open(corpusfilename, 'w') as f:
             writer = csv.DictWriter(f, reo_fieldnames)
             writer.writeheader()
 
@@ -70,10 +73,10 @@ def process_csv_files():
             reader = csv.DictReader(f)
             for row in reader:
                 r_rows.append(row)
-        with open('hansardrāindex.csv', 'a') as f:
+        with open(rāindexfilename, 'a') as f:
             writer = csv.DictWriter(f, dayindex_fieldnames)
             writer.writerows(i_rows)
-        with open('hansardreomāori.csv', 'a') as f:
+        with open(corpusfilename, 'a') as f:
             writer = csv.DictWriter(f, reo_fieldnames)
             writer.writerows(r_rows)
 
@@ -96,7 +99,7 @@ def process_csv(args):
             rows.append(row)
 
         while True:
-            with open(index_filename, 'w') as url_file:
+            with open(volumeindex_filename, 'w') as url_file:
                 writer = csv.DictWriter(url_file, volumeindex_fieldnames)
                 writer.writeheader()
                 writer.writerows(rows)
@@ -115,7 +118,7 @@ class Volume(object):
         self.day['volume'] = self.row['volume'] = v['name']
         self.day['url'] = self.row['url'] = v['url']
         self.day['date'] = v['period']
-        self.day['retrieved'] = v['retrieved']
+        self.day['retrieved'] = v['retrieved'] if 'retrieved' in v else v['retreived']
         self.flag294 = int(self.row['volume'].isdigit()
                            and int(self.row['volume']) >= 294)
         self.flag410 = int(self.flag294 and int(self.row['volume']) >= 410)
@@ -158,7 +161,8 @@ class Volume(object):
                 self.row['date'] = self.day['date'] = clean_whitespace(
                     nextday.group(0))
                 self.row['url'] = self.day['url'] = page['url']
-                self.day['retrieved'] = page['retreived']
+                self.day['retrieved'] = page['retrieved'] if (
+                    'retrieved' in page) else page['retreived']
                 self.row['utterance'] = 0
                 text = text[nextday.end():]
                 looped += 1
@@ -323,12 +327,13 @@ newspeaker_pattern = [re.compile(
 
 def main():
     try:
+        print('Processing text from volumes 1854-1987:')
         process_csv_files()
-        print('Corpus aggregation successful\n')
+        print('Corpus aggregation successful')
     except Exception as e:
         raise e
     finally:
-        print("\n--- Job took {} ---".format(get_rate()))
+        print("--- Job took {} ---\n".format(get_rate()))
 
 
 start_time = time.time()
