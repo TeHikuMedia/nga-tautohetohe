@@ -249,7 +249,7 @@ def main():
     hansard_doc_urls = scrape_Hansard_URLs()
     aggregate_hansard_corpus(hansard_doc_urls)
 
-    print('Historical scrapingCorpus successful')
+    print('Web Hansard scraping successful')
     print("--- Job took %s seconds ---\n" % (time.time() - start_time))
 
 

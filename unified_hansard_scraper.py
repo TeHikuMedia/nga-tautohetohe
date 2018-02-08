@@ -6,6 +6,7 @@ def main():
     historicaltext_cleaner.main()
     pdf_scraper.main()
     html_scraper.main()
+    print('All te reo Hansard debates corpus aggregated')
 
 
 if __name__ == '__main__':
