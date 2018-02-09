@@ -6,6 +6,7 @@ import re
 from taumahi import *
 from os import listdir
 from os.path import isfile, join, exists
+from bs4 import BeautifulSoup as bs
 
 volumeindex_filename = 'hansardvolumeindex.csv'
 rāindexfilename = 'hansardrāindex.csv'
@@ -81,6 +82,35 @@ def get_file_list(dirpath):
                 break
         else:
             yield f, name
+
+# TODO: Finish integrating scrape_urls into script
+
+
+def scrape_volume_urls():
+    # Scrape meta data from table of Hansard volumes
+    for tr in bs(urlopen('https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'), 'html.parser').select('.wikitable')[0]('tr'):
+        # Scrape data from each cell of each row of Hansard table
+        row = {}
+        row_cells = tr('td')
+        switch = ''
+        for cell in row_cells:
+            if cell.a:
+                name = cell.get_text(strip=True)
+                if name.isdigit() and 482 < int(name) and int(name) < 606:
+                    row['name'] = name
+                    row['url'] = cell.a['href']
+                    row['retrieved'] = datetime.now()
+                else:
+                    break
+            else:
+                if switch:
+                    row['session'] = cell.get_text().strip()
+                else:
+                    row['period'] = cell.string.strip()
+                    switch = True
+        else:
+            print('Got link to volume:', row['name'])
+            yield row
 
 
 def read_index_rows():

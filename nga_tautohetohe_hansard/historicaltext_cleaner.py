@@ -22,8 +22,7 @@ reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo',
                   'ambiguous', 'other', 'percent', 'text']
 # Processing the text is local resource intensive,
 # therefore number of threads should be comparable to the CPU specs.
-num_threads = 1
-write_lock = Lock()
+hathi_domain = 'https://babel.hathitrust.org'
 
 
 def get_file_list():
@@ -114,21 +113,22 @@ class Volume(object):
         self.filename = filename
         self.day = {'format': 'OCR'}
         self.totals = {}
-        self.row = {'utterance': 0}
-        self.day['volume'] = self.row['volume'] = v['name']
-        self.day['url'] = self.row['url'] = v['url']
+        self.speech = {'utterance': 0}
+        self.day['volume'] = self.speech['volume'] = v['name']
+        self.day['url'] = self.speech['url'] = v['url'] if v['url'].startswith(
+            'https') else '{}{}'.format(hathi_domain, v['url'])
         self.day['date'] = v['period']
         self.day['retrieved'] = v['retrieved'] if 'retrieved' in v else v['retreived']
-        self.flag294 = int(self.row['volume'].isdigit()
-                           and int(self.row['volume']) >= 294)
-        self.flag410 = int(self.flag294 and int(self.row['volume']) >= 410)
+        self.flag294 = int(self.speech['volume'].isdigit()
+                           and int(self.speech['volume']) >= 294)
+        self.flag410 = int(self.flag294 and int(self.speech['volume']) >= 410)
 
     def process_pages(self):
         # Invoke this method from a class instance to process the debates.
-        with open('{}/{}{}'.format(outdir, self.row['volume'], 'rāindex.csv'), 'w') as output:
+        with open('{}/{}{}'.format(outdir, self.speech['volume'], 'rāindex.csv'), 'w') as output:
             writer = csv.DictWriter(output, dayindex_fieldnames)
             writer.writeheader()
-        with open('{}/{}{}'.format(outdir, self.row['volume'], 'reomāori.csv'), 'w') as output:
+        with open('{}/{}{}'.format(outdir, self.speech['volume'], 'reomāori.csv'), 'w') as output:
             writer = csv.DictWriter(output, reo_fieldnames)
             writer.writeheader()
 
@@ -149,21 +149,25 @@ class Volume(object):
                 header = previoustext = None
                 if not looped:
                     header = header_pattern.match(text[:nextday.start()])
-                if header:
-                    previoustext = text[header.end():nextday.start()]
-                else:
-                    previoustext = text[:nextday.start()]
+                # if header:
+                #     previoustext = text[header.end():nextday.start()]
+                # else:
+                #     previoustext = text[:nextday.start()]
+                previoustext = text[header.end():nextday.start(
+                )] if header else text[:nextday.start()]
                 if previoustext:
                     day.append(previoustext.strip())
                 self.__process_day(day)
 
                 day = []
-                self.row['date'] = self.day['date'] = clean_whitespace(
+                self.speech['date'] = self.day['date'] = clean_whitespace(
                     nextday.group(0))
-                self.row['url'] = self.day['url'] = page['url']
+
+                self.speech['url'] = self.day['url'] = page['url'] if page['url'].startswith(
+                    'https') else '{}{}'.format(hathi_domain, page['url'])
                 self.day['retrieved'] = page['retrieved'] if (
                     'retrieved' in page) else page['retreived']
-                self.row['utterance'] = 0
+                self.speech['utterance'] = 0
                 text = text[nextday.end():]
                 looped += 1
             else:
@@ -196,7 +200,7 @@ class Volume(object):
         if sum(self.totals.values()) > 50:
             self.day['percent'] = get_percentage(**self.totals)
             self.day.update(self.totals)
-            with open('{}/{}{}'.format(outdir, self.row['volume'], 'rāindex.csv'), 'a') as output:
+            with open('{}/{}{}'.format(outdir, self.speech['volume'], 'rāindex.csv'), 'a') as output:
                 writer = csv.DictWriter(output, dayindex_fieldnames)
                 writer.writerow(self.day)
 
@@ -223,7 +227,7 @@ class Volume(object):
                 if utterance:
                     self.__write_row(utterance)
                     utterance = []
-                self.row['speaker'] = clean_whitespace(name)
+                self.speech['speaker'] = clean_whitespace(name)
                 text = text[kaikōrero.end():]
 
         return self.__process_sentences(text, utterance)
@@ -250,7 +254,7 @@ class Volume(object):
                 else:
                     consecutive['reo'] = True
                     consecutive['other'] = False
-                    self.row['utterance'] += 1
+                    self.speech['utterance'] += 1
                     utterance = [sentence]
 
             else:
@@ -260,7 +264,7 @@ class Volume(object):
                     utterance = []
                     consecutive['other'] = True
                     consecutive['reo'] = False
-                    self.row['utterance'] += 1
+                    self.speech['utterance'] += 1
 
                 if len(sentence) > 5:
                     for k, v in nums.items():
@@ -290,12 +294,12 @@ class Volume(object):
 
                 # and not (nums['reo'] < 5 and nums['other'] + nums['ambiguous'] < 10):
                 if c and nums['reo'] > 2 and nums['other'] < 20:
-                    self.row['text'] = text
-                    self.row.update(nums)
-                    print(self.row['text'])
-                    with open('{}/{}{}'.format(outdir, self.row['volume'], 'reomāori.csv'), 'a') as output:
+                    self.speech['text'] = text
+                    self.speech.update(nums)
+                    print(self.speech['text'])
+                    with open('{}/{}{}'.format(outdir, self.speech['volume'], 'reomāori.csv'), 'a') as output:
                         writer = csv.DictWriter(output, reo_fieldnames)
-                        writer.writerow(self.row)
+                        writer.writerow(self.speech)
 
 
 # New header pattern from volume 359 onwards (5 Dec 1968), 440 onwards - first 3 lines, 466 onward - 1 line

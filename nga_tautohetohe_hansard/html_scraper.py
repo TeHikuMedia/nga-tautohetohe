@@ -21,7 +21,7 @@ reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo',
 class HansardTuhingaScraper:
     def __init__(self, url):
         ''' Set up our tuhituhi CorpusCollector with basic params '''
-        self.url = url
+        self.url = '{}{}'.format(hansard_url, url)
         self.soup = self.metasoup = self.kōrero_hupo = None
         self.hanga_hupo()
         self.retrieved = datetime.now()
@@ -29,7 +29,7 @@ class HansardTuhingaScraper:
     def hanga_hupo(self):
         # query the website and parse the returned html using beautiful soup
 
-        doc_id = self.url.split('/')[6]
+        doc_id = self.url.split('/')[8]
         alternative_URL = '{}{}'.format(hansard_meta_url, doc_id)
         get_stuff = ''
         exception_flag = None
@@ -66,8 +66,8 @@ class HansardTuhingaScraper:
         for tr in meta_data:
             meta_entries[tr.th.get_text(" ", strip=True).lower()
                          ] = tr.td.get_text(" ", strip=True)
-        i_row = {'url': self.url,
-                 'volume': meta_entries['ref'][-3:], 'date': meta_entries['date']}
+        i_row = {'url': self.url, 'format': 'HTML'
+                 'volume': re.search(r'Volume\s*([0-9]{3})', meta_entries['ref']).group[1], 'date': meta_entries['date']}
         c_rows, c_row = [], {'utterance': 0}
         totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
         for k, v in i_row.items():

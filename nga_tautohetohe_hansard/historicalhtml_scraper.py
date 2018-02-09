@@ -81,9 +81,7 @@ def scrape_volume_urls(count):
     volume_directory = download_soup(
         hansard_url).select('.wikitable')[0]('tr')[count + 1:num_volumes + 1]
 
-    previous_result = None
-
-    results = None
+    previous_result = results = None
     with ThreadPool(num_volumes - count if num_threads > num_volumes - count else num_threads) as pool:
         for result in pool.imap(scrape_volume_url, volume_directory):
             if not (previous_result and result['url'] == previous_result['url']):
