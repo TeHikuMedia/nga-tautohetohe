@@ -1,9 +1,9 @@
-from nga_tautohetohe_hansard import historicalhtml_scraper, historicaltext_cleaner, pdf_scraper, html_scraper
+from nga_tautohetohe_hansard import ocr_html_scraper, ocr_text_cleaner, pdf_scraper, html_scraper
 
 
 def main():
-    historicalhtml_scraper.main()
-    historicaltext_cleaner.main()
+    ocr_html_scraper.main()
+    ocr_text_cleaner.main()
     pdf_scraper.main()
     html_scraper.main()
     print('All te reo Hansard debates corpus aggregated')

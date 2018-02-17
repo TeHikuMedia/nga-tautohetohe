@@ -136,7 +136,8 @@ class Volume(object):
             reader = csv.DictReader(kiroto)
             day = []
             for page in reader:
-                if not (page['url'].endswith(('c', 'l', 'x', 'v', 'i')) or page['page'] == '1') and re.search('[a-zA-Z]', page['text']):
+                if not (page['url'].endswith(('c', 'l', 'x', 'v', 'i')) or page['page'] == '1') and re.search(
+                        '[a-zA-Z]', page['text']):
                     day = self.__process_page(page, day)
 
     def __process_page(self, page, day):
@@ -166,7 +167,7 @@ class Volume(object):
                 self.speech['url'] = self.day['url'] = page['url'] if page['url'].startswith(
                     'https') else '{}{}'.format(hathi_domain, page['url'])
                 self.day['retrieved'] = page['retrieved'] if (
-                    'retrieved' in page) else page['retreived']
+                        'retrieved' in page) else page['retreived']
                 self.speech['utterance'] = 0
                 text = text[nextday.end():]
                 looped += 1
@@ -187,8 +188,8 @@ class Volume(object):
         text = re.sub('(?<=[a-z]) *-\n+ *(?=[a-z])', '', text)
         # Remove name lists, ayes and noes
         # Remove lines with no letters, short lines, single word lines and lines of punctuation, capitals, digits
-        regex = ['([A-Z][ a-zA-Z.]+, ){2}[A-Z][ a-zA-Z.]+\.', '(AYE|Aye|NOE|Noe)[^\n]*',
-                 '[^A-Za-z]*', '[^\n]{1,2}', '[ \-\d,A-Z.?!:]+', '[a-zA-Z]+', ]
+        regex = ['([A-Z][ a-zA-Z.]+, ){2}[A-Z][ a-zA-Z.]+\.', '(AYE|Aye|NOE|Noe)[^\n]*', '[^A-Za-z]*', '[^\n]{1,2}',
+                 '[ \-\d,A-Z.?!:]+', '[a-zA-Z]+', ]
         for r in regex:
             text = re.sub('(?<=\n){}\n'.format(r), '', text)
 
@@ -209,8 +210,7 @@ class Volume(object):
         while True:
             p_break = paragraph_pattern.search(text)
             if p_break:
-                utterance = self.__process_paragraph(
-                    text[:p_break.start()], utterance)
+                utterance = self.__process_paragraph(text[:p_break.start()], utterance)
 
                 text = text[p_break.end():]
             else:
@@ -283,8 +283,7 @@ class Volume(object):
             bad_egg = re.match(
                 '([^ A-Z]+ )?[A-Z][^ ]*(([^a-zA-Z]+[^ A-Z]*){1,2}[A-Z][^ ]*)*(([^a-zA-Z]+[^ A-Z]*){2})?', text)
             if not bad_egg:
-                bad_egg = re.match(
-                    '([^ ]{1,3} )+[^ ]{1,3}', text)
+                bad_egg = re.match('([^ ]{1,3} )+[^ ]{1,3}', text)
 
             if not (bad_egg and bad_egg.group() == text):
                 c, nums = kupu_ratios(text, tohutō=False)
@@ -310,16 +309,16 @@ header_pattern = re.compile(
 
 
 # Regex to look for meeting date. Date pattern changes from vol 294 onwards
-date_pattern = [re.compile(
-    r'\n[A-Z][a-z]{5,8}, [\dinISl&^]{1,2}[a-zA-Z]{2} [A-Z][!1Ia-z]{2,8}, [\d(A-Z]{4,5}'),
-    re.compile(r'[A-Z][A-Za-z]{5,8}, \d{1,2} [A-Za-z]{3,9},? \d{4}[^\n–:!?]{0,4}\n')]
+date_pattern = [re.compile(r'\n[A-Z][a-z]{5,8}, [\dinISl&^]{1,2}[a-zA-Z]{2} [A-Z][!1Ia-z]{2,8}, [\d(A-Z]{4,5}'),
+                re.compile(r'[A-Z][A-Za-z]{5,8}, \d{1,2} [A-Za-z]{3,9},? \d{4}[^\n–:!?]{0,4}\n')]
 
 # Speaker pattern changes at volume 410 (19 May 1977). Pre-410 many passages are written
 # as a narrative, so will process it as whole paragraphs.
 newspeaker_pattern = [re.compile(
     '[^a-zA-Z\n]*([A-Z][^—:\n]*( ?[A-Z]){3,}(\s*\([a-zA-Z\s]*\))?)(((\.? ?—\-?)\s*(?=[A-Z£]))|[^a-zA-Z]+(?=said|asked|wished|did|in|replied|hoped|was|thought|supported|desired|obtained|moved|having|by|brought|seconded|announ(c|e)ed))'),
-    re.compile(
-    '([A-Z][^\n]*[)A-Z])(\s+replied)?[:;]')]
+                      re.compile('([A-Z][^\n]*[)A-Z])(\s+replied)?[:;]')]
+
+
 # Previous versions:
 # NEW vs
 # '(([-~‘’\'() a-zA-Z]*\n)*)([^:\n]*:|([^,\n]*\n)[^:\n]*:)'

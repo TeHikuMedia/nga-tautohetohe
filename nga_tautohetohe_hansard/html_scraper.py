@@ -12,15 +12,15 @@ hansard_url = 'https://www.parliament.nz'
 hansard_meta_url = '{}{}'.format(hansard_url, '/en/document/')
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
-rāindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other',
-                      'percent', 'retrieved', 'format', 'incomplete']
-reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo',
-                  'ambiguous', 'other', 'percent', 'text']
+rāindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other', 'percent', 'retrieved', 'format',
+                      'incomplete']
+reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo', 'ambiguous', 'other', 'percent', 'text']
 
 
 class HansardTuhingaScraper:
+    """Class for scraping HTML formatted debates from websites."""
+
     def __init__(self, url):
-        ''' Set up our tuhituhi CorpusCollector with basic params '''
         self.url = '{}{}'.format(hansard_url, url)
         self.soup = self.metasoup = self.kōrero_hupo = None
         self.hanga_hupo()
@@ -48,13 +48,11 @@ class HansardTuhingaScraper:
         self.soup = bs(get_stuff, 'html.parser')
 
         if exception_flag:
-            self.kōrero_hupo = self.soup.find('div', attrs={'class': 'section'}).select(
-                'div.section > div.section')
+            self.kōrero_hupo = self.soup.find('div', attrs={'class': 'section'}).select('div.section > div.section')
         elif re.match(r'\d', doc_id):
             self.kōrero_hupo = self.soup.select('div.Hansard > div')
         else:
-            self.kōrero_hupo = self.soup.find_all(
-                'div', attrs={'class': 'section'})
+            self.kōrero_hupo = self.soup.find_all('div', attrs={'class': 'section'})
 
         # Make soup from hansard metadata
         meta_url = '{}{}'.format(alternative_URL, '/metadata')
@@ -64,10 +62,8 @@ class HansardTuhingaScraper:
         meta_entries = {}
         meta_data = self.metasoup.find_all('tr')
         for tr in meta_data:
-            meta_entries[tr.th.get_text(" ", strip=True).lower()
-                         ] = tr.td.get_text(" ", strip=True)
-        i_row = {'url': self.url, 'format': 'HTML'
-                 'volume': re.search(r'Volume\s*([0-9]{3})', meta_entries['ref']).group[1], 'date': meta_entries['date']}
+            meta_entries[tr.th.get_text(" ", strip=True).lower()] = tr.td.get_text(" ", strip=True)
+        i_row = {'url': self.url, 'format': 'HTML','volume': re.search(r'Volume\s*([0-9]{3})', meta_entries['ref']).group(1),'date': meta_entries['date']}
         c_rows, c_row = [], {'utterance': 0}
         totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
         for k, v in i_row.items():
@@ -114,8 +110,7 @@ class HansardTuhingaScraper:
                     if (save_corpus and nums['reo'] > 2) or check:
                         c_row.update(nums)
                         c_row['text'] = clean_whitespace(kōrero)
-                        print('{date}: {title}\nutterance {utterance}, Maori = {reo}%\nname:{speaker}\n{text}\n'.format(
-                            title=meta_entries['short title'], **c_row))
+                        print('{date}: {title}\nutterance {utterance}, Maori = {reo}%\nname:{speaker}\n{text}\n'.format(title=meta_entries['short title'], **c_row))
                         c_rows.append(dict(c_row))
         print('Time:', self.retrieved)
         i_row['percent'] = get_percentage(**totals)
@@ -154,8 +149,7 @@ def scrape_Hansard_URLs():
 
 
 def get_new_urls(last_url):
-    rhr_soup = bs(urlopen('{}{}'.format(
-        hansard_url, '/en/pb/hansard-debates/rhr/')), 'html.parser')
+    rhr_soup = bs(urlopen('{}{}'.format(hansard_url, '/en/pb/hansard-debates/rhr/')), 'html.parser')
 
     new_list = []
     while True:
@@ -170,12 +164,10 @@ def get_new_urls(last_url):
                 print(new_url)
                 new_list.append([retreivedtime, new_url])
 
-        next_page = rhr_soup.find(
-            'li', attrs={'class', 'pagination__next'})
+        next_page = rhr_soup.find('li', attrs={'class', 'pagination__next'})
 
         if next_page:
-            next_url = '{}{}'.format(hansard_url, next_page.find(
-                'a')['href'])
+            next_url = '{}{}'.format(hansard_url, next_page.find('a')['href'])
             rhr_soup = bs(urlopen(next_url), 'html.parser')
         else:
             return new_list
@@ -229,8 +221,7 @@ def aggregate_hansard_corpus(doc_urls):
         corpus_writer = csv.DictWriter(c, reo_fieldnames)
 
         for doc_url in remaining_urls:
-            c_rows, i_row = HansardTuhingaScraper(
-                doc_url).horoi_transcript_factory()
+            c_rows, i_row = HansardTuhingaScraper(doc_url).horoi_transcript_factory()
 
             index_writer.writerow(i_row)
             if c_rows:
@@ -243,7 +234,6 @@ def aggregate_hansard_corpus(doc_urls):
 
 
 def main():
-
     start_time = time.time()
 
     hansard_doc_urls = scrape_Hansard_URLs()

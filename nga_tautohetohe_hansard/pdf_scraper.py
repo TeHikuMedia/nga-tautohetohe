@@ -2,7 +2,6 @@
 import csv
 import time
 from datetime import datetime
-import re
 from taumahi import *
 from os import listdir
 from os.path import isfile, join, exists
@@ -11,17 +10,14 @@ from bs4 import BeautifulSoup as bs
 volumeindex_filename = 'hansardvolumeindex.csv'
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
-volumeindex_fieldnames = ['retrieved', 'url', 'name',
-                          'period', 'session', 'downloaded', 'processed']
-rāindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other',
-                      'percent', 'retrieved', 'format', 'incomplete']
-reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo',
-                  'ambiguous', 'other', 'percent', 'text']
-url = 'https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CRGZkMWNfeXoybmc'
+volumeindex_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'downloaded', 'processed']
+rāindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other', 'percent', 'retrieved', 'format',
+                      'incomplete']
+reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo', 'ambiguous', 'other', 'percent', 'text']
 
 
 class Speech:
-    """docstring for Speech."""
+    """This class stores the speaker name and the paragraphs of the speaker's speech."""
 
     def __init__(self, kaikōrero, paragraphs):
         self.kaikōrero = kaikōrero
@@ -29,7 +25,7 @@ class Speech:
 
 
 class Paragraph:
-    """docstring for Speech."""
+    """This class stores a paragraph of text as well is numerical information about the text."""
 
     def __init__(self, txt):
         self.txt = txt
@@ -41,86 +37,120 @@ page_break = re.compile('(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)')
 
 
 def process_txt_files(dirpath):
+    # Create output files if not exists:
     if not exists(rāindexfilename):
         with open(rāindexfilename, 'w') as f:
-            writer = csv.DictWriter(f, rāindex_fieldnames)
-            writer.writeheader()
+            csv.DictWriter(f, rāindex_fieldnames).writeheader()
     if not exists(corpusfilename):
         with open(corpusfilename, 'w') as f:
-            writer = csv.DictWriter(f, reo_fieldnames)
-            writer.writeheader()
+            csv.DictWriter(f, reo_fieldnames).writeheader()
 
+    # Open output files and get ready to extract and write volume information:
     with open(rāindexfilename, 'a') as i, open(corpusfilename, 'a') as c:
         index_writer = csv.DictWriter(i, rāindex_fieldnames)
         corpus_writer = csv.DictWriter(c, reo_fieldnames)
-        v_row = {'url': url, 'downloaded': True, 'processed': True}
+
+        # Iterate through volume file list extracting te reo corpus and information about each day of debates:
         for f, v in get_file_list(dirpath):
             print('\nProcessing {}:\n'.format(f))
+
+            # Read from volume text files
             with open('{}/{}'.format(dirpath, f), 'r') as hansard_txt:
                 txt = sub_vowels(page_break.sub('\n', hansard_txt.read()))
                 txt = re.sub(r'\[[^\]]*]', '', txt)
-                tuhituhikifile(v, get_daily_debates(
-                    txt), index_writer, corpus_writer)
-            with open(volumeindex_filename, 'a') as vol_file:
+
+                # Sort through text with RegEx then write output:
+                tuhituhikifile(v, get_daily_debates(txt), index_writer, corpus_writer)
+
+            # Update record of processed volumes:
+            v_rows = []
+            with open(volumeindex_filename, 'r') as vol_file:
+                reader = csv.DictReader(vol_file)
+                for row in reader:
+                    if row['name'] == v['name']:
+                        row['processed'] = row['downloaded]'] = True
+                    v_rows.append(row)
+            with open(volumeindex_filename, 'w') as vol_file:
                 writer = csv.DictWriter(vol_file, volumeindex_fieldnames)
-                v_row['name'] = v
-                writer.writerow(v_row)
-            print('{} processed at {} after {}\n'.format(
-                f, datetime.now(), get_rate()))
+                writer.writeheader()
+                writer.writerows(v_rows)
+            print('{} processed at {} after {}\n'.format(f, datetime.now(), get_rate()))
 
 
 def get_file_list(dirpath):
+    # Get list of volumes from the volume index file:
     volume_list = read_index_rows()
-    file_list = [f for f in listdir(dirpath) if isfile(
-        join(dirpath, f)) and f.endswith('.txt')]
+
+    # Get list of text files generated from pdf volumes:
+    file_list = [f for f in listdir(dirpath) if isfile(join(dirpath, f)) and f.endswith('.txt')]
     file_list.sort()
 
+    # Return list items if they haven't been processed yet:
     for f in file_list:
         name = f[f.index(' ') + 1:f.index('.txt')]
         for v in volume_list:
-            if v['name'] == name and v['processed']:
+            if v['name'] == name:
+                if not v['processed']:
+                    yield f, v
                 break
-        else:
-            yield f, name
-
-# TODO: Finish integrating scrape_urls into script
 
 
-def scrape_volume_urls():
-    # Scrape meta data from table of Hansard volumes
-    for tr in bs(urlopen('https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'), 'html.parser').select('.wikitable')[0]('tr'):
-        # Scrape data from each cell of each row of Hansard table
+def scrape_volume_urls(last_index):
+    switch1 = switch2 = False
+
+    # Scrape meta data from table list of Hansard volumes
+    for tr in bs(urlopen('https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'), 'html.parser').select(
+            '.wikitable')[0]('tr'):
+        # Sort data from each cell of each row of table list into list of dictionaries
         row = {}
         row_cells = tr('td')
-        switch = ''
+        switch3 = False
         for cell in row_cells:
             if cell.a:
                 name = cell.get_text(strip=True)
-                if name.isdigit() and 482 < int(name) and int(name) < 606:
-                    row['name'] = name
-                    row['url'] = cell.a['href']
-                    row['retrieved'] = datetime.now()
+                if switch1:
+                    switch2 = not (not name.isdigit() or int(name) < 606)
+                    if switch2:
+                        break
+                    else:
+                        row['name'] = name
+                        row['url'] = cell.a['href']
+                        row['retrieved'] = datetime.now()
                 else:
+                    switch1 = name == last_index
                     break
             else:
-                if switch:
+                if switch3:
                     row['session'] = cell.get_text().strip()
                 else:
                     row['period'] = cell.string.strip()
-                    switch = True
+                    switch3 = True
         else:
             print('Got link to volume:', row['name'])
             yield row
+        if switch2:
+            break
 
 
 def read_index_rows():
     while True:
         rows = []
-        with open(volumeindex_filename, 'r') as url_file:
-            reader = csv.DictReader(url_file)
+        # Read the volume index file
+        with open(volumeindex_filename, 'r') as v_index:
+            reader = csv.DictReader(v_index)
             for row in reader:
                 rows.append(row)
-            return rows
+        last_entry = row[-1]['name']
+
+        # Scrape remaining volume urls from parliament website & save to file if the index doesn't have them yet:
+        if not last_entry.isdigit() or int(last_entry) < 606:
+            with open(volumeindex_filename, 'a') as v_index:
+                writer = csv.DictWriter(v_index, volumeindex_fieldnames)
+                entries = scrape_volume_urls(last_entry)
+                writer.writerows(entries)
+                rows.extend(entries)
+
+        return rows
 
 
 # Regex to look for meeting date then split into date-debate key-value map
@@ -136,8 +166,7 @@ def get_daily_debates(txt, date=None):
     debate_list = []
     nextdate = debate_date.search(txt)
     if nextdate:
-        debate_list = get_daily_debates(
-            txt=txt[nextdate.end():], date=nextdate)
+        debate_list = get_daily_debates(txt=txt[nextdate.end():], date=nextdate)
         txt = txt[:nextdate.start()]
     loops = most_loops
     debate_list.append([date.group(0), get_speeches(txt)])
@@ -152,8 +181,9 @@ def get_daily_debates(txt, date=None):
 # Regex to check each paragraph matches for a new speaker, then extracts the name
 new_speaker = re.compile('{titles}({speaker}|([^,\n]*\n){speaker})'.format(
     titles='(([-~{}() a-zA-Z]*\n)*)'.format(apostrophes), speaker='[^:\n]*:'))
-name_behaviour = re.compile('(\d{d}\. )?((Rt\.? )?(Hon\. )?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+)( \(|:)'.format(
-    a=apostrophes, d='{1,2}'))
+name_behaviour = re.compile(
+    '(\d{d}\. )?((Rt\.? )?(Hon\. )?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+)( \(|:)'.format(
+        a=apostrophes, d='{1,2}'))
 
 
 def get_speeches(txt):
@@ -192,7 +222,7 @@ def get_speeches(txt):
 def tuhituhikifile(volume, debates, index_writer, corpus_writer):
     for date, speeches in reversed(debates):
         totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
-        i_row = {'url': url, 'volume': volume, 'date': date}
+        i_row = {'url': volume['url'], 'volume': volume['name'], 'date': date}
         c_row = {'utterance': 0}
         for k, v in i_row.items():
             c_row[k] = v
@@ -200,11 +230,10 @@ def tuhituhikifile(volume, debates, index_writer, corpus_writer):
             for paragraph in speech.paragraphs:
                 c_row['utterance'] += 1
                 if paragraph.condition:
-                    c_row.update({'text': clean_whitespace(
-                        paragraph.txt), 'speaker': speech.kaikōrero})
+                    c_row.update({'text': clean_whitespace(paragraph.txt), 'speaker': speech.kaikōrero})
                     c_row.update(paragraph.ratios)
-                    print(
-                        'Volume {volume}: {date}\n{speaker}: {utterance},\nMaori = {percent}%\n{text}\n'.format(**c_row))
+                    print('Volume {volume}: {date}\n{speaker}: {utterance},\nMaori = {percent}%\n{text}\n'.format(
+                        **c_row))
                     corpus_writer.writerow(c_row)
 
                 for k, v in paragraph.ratios.items():
@@ -213,8 +242,7 @@ def tuhituhikifile(volume, debates, index_writer, corpus_writer):
         i_row.update({'percent': get_percentage(**totals), 'format': 'PDF'})
         i_row.update(totals)
         index_writer.writerow(i_row)
-        print(
-            'Maori = {reo}, Ambiguous = {ambiguous}, Non-Māori = {other}, Percentage = {percent} %'.format(**i_row))
+        print('Maori = {reo}, Ambiguous = {ambiguous}, Non-Māori = {other}, Percentage = {percent} %'.format(**i_row))
 
 
 def main():
@@ -226,8 +254,7 @@ def main():
         raise e
     finally:
         print("--- Job took {} ---".format(get_rate()))
-        print('Looped through {} strings while processing {}'.format(
-            most_loops, longest_day))
+        print('Looped through {} strings while processing {}'.format(most_loops, longest_day))
 
 
 start_time = time.time()

@@ -13,8 +13,7 @@ from taumahi import *
 hansard_url = 'https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'
 hathi_domain = 'https://babel.hathitrust.org'
 volumeindex_filename = 'hansardvolumeindex.csv'
-index_fieldnames = ['retrieved', 'url', 'name',
-                    'period', 'session', 'downloaded', 'processed']
+index_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'downloaded', 'processed']
 volumes_dir = '1854-1987'
 num_volumes = 488 - 4  # 4 sources contain 2 volumes combined
 complete = 0
@@ -78,10 +77,9 @@ def read_index_rows():
 
 def scrape_volume_urls(count):
     # Scrape meta data from table of Hansard volumes
-    volume_directory = download_soup(
-        hansard_url).select('.wikitable')[0]('tr')[count + 1:num_volumes + 1]
+    volume_directory = download_soup(hansard_url).select('.wikitable')[0]('tr')[count + 1:num_volumes + 1]
 
-    previous_result = results = None
+    previous_result = None
     with ThreadPool(num_volumes - count if num_threads > num_volumes - count else num_threads) as pool:
         for result in pool.imap(scrape_volume_url, volume_directory):
             if not (previous_result and result['url'] == previous_result['url']):
@@ -147,15 +145,13 @@ def download_volume(volume):
     else:
         with open(filepath, 'w') as txt_file:
             fieldnames = ['retrieved', 'url', 'page', 'text']
-            writer = csv.DictWriter(
-                txt_file, fieldnames)
+            writer = csv.DictWriter(txt_file, fieldnames)
             writer.writeheader()
 
     # Download and save remaining volume pages:
     more_pages = True
     if url:
-        more_pages, url, _ = download_page(
-            url.replace(hathi_domain, '', 1), pagecount)
+        more_pages, url, _ = download_page(url.replace(hathi_domain, '', 1), pagecount)
     else:
         url = volume['url']
     while more_pages:
@@ -185,8 +181,11 @@ def download_volume(volume):
                 writer = csv.DictWriter(url_file, index_fieldnames)
                 writer.writeheader()
                 writer.writerows(rows)
-            print('Volume {} complete! Downloading {}{} ({}/{}) complete at {} after {}\n'.format(
-                name, percent, '%', completion, num_volumes, datetime.now(), get_rate(start_time)))
+            print('Volume {} complete! Downloading {}{} ({}/{}) complete at {} after {}\n'.format(name, percent, '%',
+                                                                                                  completion,
+                                                                                                  num_volumes,
+                                                                                                  datetime.now(),
+                                                                                                  get_rate(start_time)))
             break
 
 
@@ -197,8 +196,7 @@ def download_page(url, page):
     page_soup = soup.find(id='mdpPage')
     text = page_soup.find(class_='Text')
     if text:
-        row = {'retrieved': datetime.now(), 'url': url, 'page': page,
-               'text': text.string}
+        row = {'retrieved': datetime.now(), 'url': url, 'page': page, 'text': text.string}
 
     url = ''
     anchors = page_soup('a')
@@ -233,8 +231,9 @@ def download_soup(url):
                 if tries > 0:
                     # reset attempt counter
                     interval_pages_processed = tries = 0
-                    print('Downloaded {} pages in {} at {} p/s'.format(
-                        total_pages_processed, get_rate(start_time), round(total_pages_processed / (time.time() - start_time), 2)))
+                    print('Downloaded {} pages in {} at {} p/s'.format(total_pages_processed, get_rate(start_time),
+                                                                       round(total_pages_processed / (
+                                                                                   time.time() - start_time), 2)))
                 total_pages_processed += 1
                 interval_pages_processed += 1
 
@@ -244,8 +243,7 @@ def download_soup(url):
             responsive = False
             with sleep_lock:
                 if not responsive:
-                    print(e, '\n{} pages downloaded since last error'.format(
-                        interval_pages_processed))
+                    print(e, '\n{} pages downloaded since last error'.format(interval_pages_processed))
                     time.sleep(1)
                     if not responsive:
                         time.sleep(4)
