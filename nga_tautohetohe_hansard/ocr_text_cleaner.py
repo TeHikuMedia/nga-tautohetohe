@@ -1,12 +1,9 @@
 # import libraries
 import csv
-from pathlib import Path
 import time
-from datetime import datetime
 import re
 from taumahi import *
 from os import listdir, makedirs
-from multiprocessing.dummy import Process, Pool as ThreadPool, Lock
 from os.path import isfile, join, exists
 
 indir = '1854-1987'
@@ -14,21 +11,23 @@ outdir = 'processed'
 volumeindex_filename = 'hansardvolumeindex.csv'
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
-volumeindex_fieldnames = ['retrieved', 'url', 'name',
-                          'period', 'session', 'downloaded', 'processed']
-dayindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other',
-                       'percent', 'retrieved', 'format', 'incomplete']
-reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo',
-                  'ambiguous', 'other', 'percent', 'text']
+volumeindex_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'downloaded', 'processed']
+dayindex_fieldnames = ['url', 'volume', 'date1', 'date2', 'reo', 'ambiguous', 'other', 'percent', 'retrieved', 'format',
+                       'incomplete']
+reo_fieldnames = ['url', 'volume', 'date1', 'date2', 'utterance', 'speaker', 'reo', 'ambiguous', 'other', 'percent',
+                  'text']
 # Processing the text is local resource intensive,
 # therefore number of threads should be comparable to the CPU specs.
 hathi_domain = 'https://babel.hathitrust.org'
+months = {1: 'january', 2: 'february', 3: 'march', 4: 'april', 5: 'may', 6: 'june', 7: 'july', 8: 'august',
+          9: 'september', 10: 'october', 11: 'november', 12: 'december'}
+inv_months = {v: k for k, v in months.items()}
+rā = māhina = tau = None
 
 
 def get_file_list():
     volume_list = read_index_rows()
-    file_list = [f for f in listdir(indir) if isfile(
-        join(indir, f)) and f.endswith('.csv')]
+    file_list = [f for f in listdir(indir) if isfile(join(indir, f)) and f.endswith('.csv')]
 
     for v in volume_list:
         for f in file_list:
@@ -39,18 +38,16 @@ def get_file_list():
 def read_index_rows():
     while True:
         rows = []
-        with open(volumeindex_filename, 'r') as url_file:
-            reader = csv.DictReader(url_file)
+        with open(volumeindex_filename, 'r') as v_index:
+            reader = csv.DictReader(v_index)
             for row in reader:
-                if not (row['name'].isdigit() and int(row['name']) > 482):
+                if not row['name'].isdigit() or int(row['name']) < 483:
                     rows.append(row)
             return rows
 
 
 def process_csv_files():
-    if not exists(outdir):
-        makedirs(outdir)
-
+    # Make output files if not exist:
     if not exists(rāindexfilename):
         with open(rāindexfilename, 'w') as f:
             writer = csv.DictWriter(f, dayindex_fieldnames)
@@ -60,78 +57,62 @@ def process_csv_files():
             writer = csv.DictWriter(f, reo_fieldnames)
             writer.writeheader()
 
-    # with ThreadPool(num_threads) as pool:
-    for name in map(process_csv, get_file_list()):
-        i_rows = []
-        r_rows = []
-        with open('{}/{}rāindex.csv'.format(outdir, name), 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                i_rows.append(row)
-        with open('{}/{}reomāori.csv'.format(outdir, name), 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                r_rows.append(row)
-        with open(rāindexfilename, 'a') as f:
-            writer = csv.DictWriter(f, dayindex_fieldnames)
-            writer.writerows(i_rows)
-        with open(corpusfilename, 'a') as f:
-            writer = csv.DictWriter(f, reo_fieldnames)
-            writer.writerows(r_rows)
+    # Process list of unprocessed volumes:
+    map(process_csv, get_file_list())
 
 
 def process_csv(args):
-    f = args[0]
-    v = args[1]
-    print('Extracting corpus from {}:'.format(f))
+    f, v = args
+    print(f'Extracting corpus from {f}:')
 
-    volume = Volume(f, v)
-    volume.process_pages()
+    # Process the volume:
+    Volume(f, v).process_pages()
 
     # Update the record of processed volumes:
-    with write_lock:
-        completion = 1
-        rows = []
-        for row in read_index_rows():
-            if v['name'] == row['name']:
-                row['processed'] = True
-            rows.append(row)
+    rows = []
+    for row in read_index_rows():
+        if v['name'] == row['name']:
+            row['processed'] = True
+        rows.append(row)
 
-        while True:
-            with open(volumeindex_filename, 'w') as url_file:
-                writer = csv.DictWriter(url_file, volumeindex_fieldnames)
-                writer.writeheader()
-                writer.writerows(rows)
-            break
+    while True:
+        with open(volumeindex_filename, 'w') as v_index:
+            writer = csv.DictWriter(v_index, volumeindex_fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        break
+
     return v['name']
 
 
 class Volume(object):
-    """docstring for Volume."""
+    """This class loads the pages of a volume from a csv and sorts through the text to extract kōrero reo Māori &
+    numerical information."""
 
     def __init__(self, filename, v):
+        # Initialise instance and store some associated meta data:
         self.filename = filename
         self.day = {'format': 'OCR'}
         self.totals = {}
         self.speech = {'utterance': 0}
         self.day['volume'] = self.speech['volume'] = v['name']
-        self.day['url'] = self.speech['url'] = v['url'] if v['url'].startswith(
-            'https') else '{}{}'.format(hathi_domain, v['url'])
-        self.day['date'] = v['period']
+        self.day['url'] = self.speech['url'] = v['url'] if v['url'].startswith('https') else '{}{}'.format(hathi_domain,
+                                                                                                           v['url'])
+        self.day['date1'] = v['period'][:v['period'].index('-').strip()]
         self.day['retrieved'] = v['retrieved'] if 'retrieved' in v else v['retreived']
-        self.flag294 = int(self.speech['volume'].isdigit()
-                           and int(self.speech['volume']) >= 294)
+        self.flag294 = int(self.speech['volume'].isdigit() and int(self.speech['volume']) >= 294)
         self.flag410 = int(self.flag294 and int(self.speech['volume']) >= 410)
+        self.same_day_flag = False
+
+        global rā, māhina, tau
+        rā = int(re.match('\d+', v['period']).group(0))
+        māhina = inv_months[re.search('[a-zA-Z]+', v['period']).group(0).lower()]
+        tau = int(self.day['date1'][-4:])
 
     def process_pages(self):
-        # Invoke this method from a class instance to process the debates.
-        with open('{}/{}{}'.format(outdir, self.speech['volume'], 'rāindex.csv'), 'w') as output:
-            writer = csv.DictWriter(output, dayindex_fieldnames)
-            writer.writeheader()
-        with open('{}/{}{}'.format(outdir, self.speech['volume'], 'reomāori.csv'), 'w') as output:
-            writer = csv.DictWriter(output, reo_fieldnames)
-            writer.writeheader()
+        """Invoke this method from a class instance to process the debates."""
 
+        # Open volume csv & read row pages:
         with open('{}/{}'.format(indir, self.filename), 'r') as kiroto:
             reader = csv.DictReader(kiroto)
             day = []
@@ -143,49 +124,78 @@ class Volume(object):
     def __process_page(self, page, day):
         text = page['text']
         looped = 0
+        global rā, māhina, tau
 
         while True:
-            nextday = date_pattern[self.flag294].search(text)
-            if nextday:
-                header = previoustext = None
-                if not looped:
-                    header = header_pattern.match(text[:nextday.start()])
+            next_day = date_pattern[self.flag294].search(text)
+            if next_day:
+                header = None if looped else header_pattern.match(text[:next_day.start()])
+                previoustext = text[:next_day.start()] if not header else text[header.end():next_day.start()]
+                # if not looped:
+                #     header = header_pattern.match(text[:next_day.start()])
                 # if header:
-                #     previoustext = text[header.end():nextday.start()]
+                #     previoustext = text[header.end():next_day.start()]
                 # else:
-                #     previoustext = text[:nextday.start()]
-                previoustext = text[header.end():nextday.start(
-                )] if header else text[:nextday.start()]
+                #     previoustext = text[:next_day.start()]
                 if previoustext:
                     day.append(previoustext.strip())
                 self.__process_day(day)
 
-                day = []
-                self.speech['date'] = self.day['date'] = clean_whitespace(
-                    nextday.group(0))
+                # Write day statistics:
+                if not self.same_day_flag and sum(self.totals.values()) > 50:
+                    self.day['percent'] = get_percentage(**self.totals)
+                    self.day.update(self.totals)
+                    with open(rāindexfilename, 'a') as output:
+                        writer = csv.DictWriter(output, dayindex_fieldnames)
+                        writer.writerow(self.day)
 
-                self.speech['url'] = self.day['url'] = page['url'] if page['url'].startswith(
-                    'https') else '{}{}'.format(hathi_domain, page['url'])
-                self.day['retrieved'] = page['retrieved'] if (
-                        'retrieved' in page) else page['retreived']
-                self.speech['utterance'] = 0
-                text = text[nextday.end():]
+                # Generate numerical date from the regex match and check if actually is a later date:
+                self.same_day_flag = False
+                r = next_day.group(1)
+                r = 1 if (not r.isdigit() or int(r) < 1) else int(r) if int(r) <= 31 else 31
+                m = next_day.group(2).lower()
+                m = 1 if m not in inv_months else inv_months[m]
+                t = next_day.group(3)
+                if re.match('[ABCDE]', self.day['volume']) and t.isdigit() and int(t) - tau == 1:
+                    tau += 1
+                    rā, māhina = r, m
+                elif 0 < m - māhina:
+                    rā, māhina = r, m
+                elif 0 < r - rā:
+                    rā = r
+                else:
+                    self.same_day_flag = True
+
+                # Reset page list and day totals, get meta info for next day:
+                day = []
+                if not self.same_day_flag or sum(self.totals.values()) <= 50:
+                    self.totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
+                    self.day['date1'] = clean_whitespace(next_day.group(0))
+                    self.speech['date2'] = self.day['date2'] = f'{tau}-{māhina}-{rā}'
+                    self.day['url'] = page['url'] if page['url'].startswith('https') else '{}{}'.format(hathi_domain,
+                                                                                                        page['url'])
+                    self.day['retrieved'] = page['retrieved'] if ('retrieved' in page) else page['retreived']
+                    self.speech['utterance'] = 0
+
+                self.speech['date1'] = clean_whitespace(next_day.group(0))
+                self.speech['url'] = page['url'] if page['url'].startswith('https') else '{}{}'.format(hathi_domain,
+                                                                                                       page['url'])
+                text = text[next_day.end():]
                 looped += 1
             else:
+                # No more dates in page, append rest of text to page list and return list:
                 if not looped:
                     header = header_pattern.match(text)
                     if header:
                         text = text[header.end():]
                 if text:
                     day.append(text.strip())
-                break
-        return day
+                return day
 
     def __process_day(self, day):
-        text = '\n'.join(day)
+        # Join pages and remove hyphenated line breaks
+        text = re.sub('(?<=[a-z]) *-\n+ *(?=[a-z])', '', '\n'.join(day))
 
-        # Remove hyphenated line breaks
-        text = re.sub('(?<=[a-z]) *-\n+ *(?=[a-z])', '', text)
         # Remove name lists, ayes and noes
         # Remove lines with no letters, short lines, single word lines and lines of punctuation, capitals, digits
         regex = ['([A-Z][ a-zA-Z.]+, ){2}[A-Z][ a-zA-Z.]+\.', '(AYE|Aye|NOE|Noe)[^\n]*', '[^A-Za-z]*', '[^\n]{1,2}',
@@ -193,23 +203,15 @@ class Volume(object):
         for r in regex:
             text = re.sub('(?<=\n){}\n'.format(r), '', text)
 
-        # Reset totals then process text:
-        self.totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
         self.__process_paragraphs(text)
-
-        # Write day statistics
-        if sum(self.totals.values()) > 50:
-            self.day['percent'] = get_percentage(**self.totals)
-            self.day.update(self.totals)
-            with open('{}/{}{}'.format(outdir, self.speech['volume'], 'rāindex.csv'), 'a') as output:
-                writer = csv.DictWriter(output, dayindex_fieldnames)
-                writer.writerow(self.day)
 
     def __process_paragraphs(self, text):
         utterance = []
         while True:
+            # Look for paragraph endings and separate text:
             p_break = paragraph_pattern.search(text)
             if p_break:
+
                 utterance = self.__process_paragraph(text[:p_break.start()], utterance)
 
                 text = text[p_break.end():]
@@ -220,35 +222,40 @@ class Volume(object):
                 break
 
     def __process_paragraph(self, text, utterance):
+        # Check to see if paragraph declares name of speaker:
         kaikōrero = newspeaker_pattern[self.flag410].match(text)
         if kaikōrero:
             name = kaikōrero.group(1)
             if name:
+                # If new speaker then write any previous te reo speech and clear list for new speech:
                 if utterance:
                     self.__write_row(utterance)
                     utterance = []
                 self.speech['speaker'] = clean_whitespace(name)
                 text = text[kaikōrero.end():]
 
+        # Build up list of consecutive te reo sentences and return:
         return self.__process_sentences(text, utterance)
 
     def __process_sentences(self, text, utterance):
         consecutive = {'reo': True} if utterance else {'reo': False}
         consecutive['other'] = False
-        loopflag, nums = True, {}
+        loop_flag, nums = True, {}
 
-        while loopflag:
-            nextsentence = new_sentence.search(text)
-            if nextsentence:
-                sentence = text[:nextsentence.start() + 1]
-                text = text[nextsentence.end():]
+        while loop_flag:
+            # Look for sentence / statement like endings and separate text:
+            next_sentence = new_sentence.search(text)
+            if next_sentence:
+                sentence = text[:next_sentence.start() + 1]
+                text = text[next_sentence.end():]
             else:
                 sentence = text
-                loopflag = False
+                loop_flag = False
 
+            # Check to see if sentence is te reo Māori and build list of consecutive sentences if so:
             c, nums = kupu_ratios(sentence, tohutō=False)
+            sentence = clean_whitespace(sentence)
             if c:
-                sentence = clean_whitespace(sentence)
                 if consecutive['reo']:
                     utterance.append(sentence)
                 else:
@@ -258,6 +265,7 @@ class Volume(object):
                     utterance = [sentence]
 
             else:
+                # Check to see if consecutive condition broken and if so then write the previous te reo speech and clear list:
                 if not consecutive['other']:
                     if utterance:
                         self.__write_row(utterance)
@@ -266,26 +274,39 @@ class Volume(object):
                     consecutive['reo'] = False
                     self.speech['utterance'] += 1
 
-                if len(sentence) > 5:
-                    for k, v in nums.items():
-                        if k != 'percent':
-                            self.totals[k] += v
+                # Record nums count if text is part of speech:
+                if 5 < len(sentence):
+                    first_letter = re.search('[a-zA-Z£]', sentence)
+                    if first_letter:
+                        sentence = sentence[first_letter.start():]
+                        bad_egg = re.match(
+                            '([^ A-Z]+ )?[A-Z][^ ]*(([^a-zA-Z]+[^ A-Z]*){1,2}[A-Z][^ ]*)*(([^a-zA-Z]+[^ A-Z]*){2})?',
+                            sentence)
+                        if not bad_egg:
+                            bad_egg = re.match('([^ ]{1,3} )+[^ ]{1,3}', sentence)
 
-            if not loopflag:
+                        if not (bad_egg and bad_egg.group(0) == sentence):
+                            for k, v in nums.items():
+                                if k != 'percent':
+                                    self.totals[k] += v
+
+            # Only returns list of consecutive te reo Māori sentences:
+            if not loop_flag:
                 return utterance
 
     def __write_row(self, text):
         text = ' '.join(text)
         first_letter = re.search('[a-zA-Z£]', text)
-        l = len(text)
-        if first_letter and l > 3:
+        length = len(text)
+        # Filter garbage and save results if good:
+        if first_letter and length > 3:
             text = text[first_letter.start():]
             bad_egg = re.match(
                 '([^ A-Z]+ )?[A-Z][^ ]*(([^a-zA-Z]+[^ A-Z]*){1,2}[A-Z][^ ]*)*(([^a-zA-Z]+[^ A-Z]*){2})?', text)
             if not bad_egg:
                 bad_egg = re.match('([^ ]{1,3} )+[^ ]{1,3}', text)
 
-            if not (bad_egg and bad_egg.group() == text):
+            if not (bad_egg and bad_egg.group(0) == text):
                 c, nums = kupu_ratios(text, tohutō=False)
                 for k, v in nums.items():
                     if k != 'percent':
@@ -296,7 +317,7 @@ class Volume(object):
                     self.speech['text'] = text
                     self.speech.update(nums)
                     print(self.speech['text'])
-                    with open('{}/{}{}'.format(outdir, self.speech['volume'], 'reomāori.csv'), 'a') as output:
+                    with open(corpusfilename, 'a') as output:
                         writer = csv.DictWriter(output, reo_fieldnames)
                         writer.writerow(self.speech)
 
@@ -309,14 +330,16 @@ header_pattern = re.compile(
 
 
 # Regex to look for meeting date. Date pattern changes from vol 294 onwards
-date_pattern = [re.compile(r'\n[A-Z][a-z]{5,8}, [\dinISl&^]{1,2}[a-zA-Z]{2} [A-Z][!1Ia-z]{2,8}, [\d(A-Z]{4,5}'),
-                re.compile(r'[A-Z][A-Za-z]{5,8}, \d{1,2} [A-Za-z]{3,9},? \d{4}[^\n–:!?]{0,4}\n')]
+# day = group(1), month = group(2), year = group(3) if explicitly stated
+date_pattern = [
+    re.compile('\n[A-Z][a-z]{5,8}, ([\dinISl&^]{1,2})[a-zA-Z]{2} ([A-Z][!1Ia-z]{2,8}), ([\d(A-Z]{4,5})[^\n]{0,4}\n'),
+    re.compile('\n[A-Z][A-Za-z]{5,8}, (\d{1,2}) ([A-Za-z]{3,9}),? ?(\d|[^\n–:!?]){4}?[^\n–:!?]{0,4}\n')]
 
 # Speaker pattern changes at volume 410 (19 May 1977). Pre-410 many passages are written
 # as a narrative, so will process it as whole paragraphs.
 newspeaker_pattern = [re.compile(
     '[^a-zA-Z\n]*([A-Z][^—:\n]*( ?[A-Z]){3,}(\s*\([a-zA-Z\s]*\))?)(((\.? ?—\-?)\s*(?=[A-Z£]))|[^a-zA-Z]+(?=said|asked|wished|did|in|replied|hoped|was|thought|supported|desired|obtained|moved|having|by|brought|seconded|announ(c|e)ed))'),
-                      re.compile('([A-Z][^\n]*[)A-Z])(\s+replied)?[:;]')]
+    re.compile('([A-Z][^\n]*[)A-Z])(\s+replied)?[:;]')]
 
 
 # Previous versions:
@@ -333,10 +356,10 @@ def main():
         print('Processing text from volumes 1854-1987:')
         process_csv_files()
         print('Corpus aggregation successful')
-    except Exception as e:
-        raise e
+    except Exception as exception:
+        raise exception
     finally:
-        print("--- Job took {} ---\n".format(get_rate()))
+        print(f"--- Job took {get_rate()} ---\n")
 
 
 start_time = time.time()
@@ -348,11 +371,9 @@ def get_rate():
     h, m = divmod(m, 60)
     if m:
         m = int(m)
-        if h:
-            return '{} hours {} minutes {} seconds'.format(int(h), m, s)
-        else:
-            return '{} minutes {} seconds'.format(m, s)
-    return '{} seconds'.format(s)
+        return f'{int(h)} hours {m} minutes {s} seconds' if h else f'{m} minutes {s} seconds'
+
+    return f'{s} seconds'
 
 
 if __name__ == '__main__':
