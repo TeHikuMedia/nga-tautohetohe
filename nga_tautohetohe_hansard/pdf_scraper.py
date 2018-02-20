@@ -10,10 +10,11 @@ from bs4 import BeautifulSoup as bs
 volumeindex_filename = 'hansardvolumeindex.csv'
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
-volumeindex_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'downloaded', 'processed']
-rāindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other', 'percent', 'retrieved', 'format',
+volumeindex_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'format', 'downloaded', 'processed']
+rāindex_fieldnames = ['url', 'volume', 'date1', 'date2', 'reo', 'ambiguous', 'other', 'percent', 'retrieved', 'format',
                       'incomplete']
-reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo', 'ambiguous', 'other', 'percent', 'text']
+reo_fieldnames = ['url', 'volume', 'date1', 'date2', 'utterance', 'speaker', 'reo', 'ambiguous', 'other', 'percent',
+                  'text']
 
 
 class Speech:
@@ -39,23 +40,23 @@ page_break = re.compile('(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)')
 def process_txt_files(dirpath):
     # Create output files if not exists:
     if not exists(rāindexfilename):
-        with open(rāindexfilename, 'w') as f:
+        with open(rāindexfilename, 'w', newline='', encoding='utf8') as f:
             csv.DictWriter(f, rāindex_fieldnames).writeheader()
     if not exists(corpusfilename):
-        with open(corpusfilename, 'w') as f:
+        with open(corpusfilename, 'w', newline='', encoding='utf8') as f:
             csv.DictWriter(f, reo_fieldnames).writeheader()
 
     # Open output files and get ready to extract and write volume information:
-    with open(rāindexfilename, 'a') as i, open(corpusfilename, 'a') as c:
+    with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='', encoding='utf8') as c:
         index_writer = csv.DictWriter(i, rāindex_fieldnames)
         corpus_writer = csv.DictWriter(c, reo_fieldnames)
 
         # Iterate through volume file list extracting te reo corpus and information about each day of debates:
         for f, v in get_file_list(dirpath):
-            print('\nProcessing {}:\n'.format(f))
+            print(f'\nProcessing {f}:\n')
 
             # Read from volume text files
-            with open('{}/{}'.format(dirpath, f), 'r') as hansard_txt:
+            with open(f'{dirpath}/{f}', 'r', newline='', encoding='utf8') as hansard_txt:
                 txt = sub_vowels(page_break.sub('\n', hansard_txt.read()))
                 txt = re.sub(r'\[[^\]]*]', '', txt)
 
@@ -64,13 +65,13 @@ def process_txt_files(dirpath):
 
             # Update record of processed volumes:
             v_rows = []
-            with open(volumeindex_filename, 'r') as vol_file:
+            with open(volumeindex_filename, 'r', newline='', encoding='utf8') as vol_file:
                 reader = csv.DictReader(vol_file)
                 for row in reader:
                     if row['name'] == v['name']:
                         row['processed'] = row['downloaded]'] = True
                     v_rows.append(row)
-            with open(volumeindex_filename, 'w') as vol_file:
+            with open(volumeindex_filename, 'w', newline='', encoding='utf8') as vol_file:
                 writer = csv.DictWriter(vol_file, volumeindex_fieldnames)
                 writer.writeheader()
                 writer.writerows(v_rows)
@@ -102,7 +103,7 @@ def scrape_volume_urls(last_index):
     for tr in bs(urlopen('https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'), 'html.parser').select(
             '.wikitable')[0]('tr'):
         # Sort data from each cell of each row of table list into list of dictionaries
-        row = {}
+        row = {'format': 'PDF'}
         row_cells = tr('td')
         switch3 = False
         for cell in row_cells:
@@ -136,7 +137,7 @@ def read_index_rows():
     while True:
         rows = []
         # Read the volume index file
-        with open(volumeindex_filename, 'r') as v_index:
+        with open(volumeindex_filename, 'r', newline='', encoding='utf8') as v_index:
             reader = csv.DictReader(v_index)
             for row in reader:
                 rows.append(row)
@@ -144,7 +145,7 @@ def read_index_rows():
 
         # Scrape remaining volume urls from parliament website & save to file if the index doesn't have them yet:
         if not last_entry.isdigit() or int(last_entry) < 606:
-            with open(volumeindex_filename, 'a') as v_index:
+            with open(volumeindex_filename, 'a', newline='', encoding='utf8') as v_index:
                 writer = csv.DictWriter(v_index, volumeindex_fieldnames)
                 entries = scrape_volume_urls(last_entry)
                 writer.writerows(entries)
@@ -153,38 +154,28 @@ def read_index_rows():
         return rows
 
 
-# Regex to look for meeting date then split into date-debate key-value map
-debate_date = re.compile(pattern=r'[A-Z]{6,9}, \d{1,2} [A-Z]{3,9} \d{4}')
-
-
 def get_daily_debates(txt, date=None):
     if not date:
         date = debate_date.search(txt)
         txt = txt[date.end():]
 
-    print('Processing {}'.format(date.group(0)))
+    print(f'Processing {date.group(0)}')
     debate_list = []
-    nextdate = debate_date.search(txt)
-    if nextdate:
-        debate_list = get_daily_debates(txt=txt[nextdate.end():], date=nextdate)
-        txt = txt[:nextdate.start()]
+    next_date = debate_date.search(txt)
+    if next_date:
+        debate_list = get_daily_debates(txt=txt[next_date.end():], date=next_date)
+        txt = txt[:next_date.start()]
     loops = most_loops
     debate_list.append([date.group(0), get_speeches(txt)])
-    print('Processed {}'.format(date.group(0)))
+    print(f'Processed {date.group(0)}')
     if most_loops > loops:
         global longest_day
         longest_day = date.group(0)
-        print('Most strings! {}\n'.format(most_loops))
+        print(f'Most strings! {most_loops}\n')
     return debate_list
 
 
-# Regex to check each paragraph matches for a new speaker, then extracts the name
-new_speaker = re.compile('{titles}({speaker}|([^,\n]*\n){speaker})'.format(
-    titles='(([-~{}() a-zA-Z]*\n)*)'.format(apostrophes), speaker='[^:\n]*:'))
-name_behaviour = re.compile(
-    '(\d{d}\. )?((Rt\.? )?(Hon\. )?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+)( \(|:)'.format(
-        a=apostrophes, d='{1,2}'))
-
+# TODO: Search for tereo sentences and build speech if consecutive
 
 def get_speeches(txt):
     speeches = []
@@ -217,6 +208,17 @@ def get_speeches(txt):
         most_loops = loops
 
     return speeches
+
+
+# Regex to look for meeting date then split into date-debate key-value map
+debate_date = re.compile(pattern=r'[A-Z]{6,9}, \d{1,2} [A-Z]{3,9} \d{4}')
+
+# Regex to check each paragraph matches for a new speaker, then extracts the name
+new_speaker = re.compile('{titles}({speaker}|([^,\n]*\n){speaker})'.format(
+    titles=f'(([-~{apostrophes}() a-zA-Z]*\n)*)', speaker='[^:\n]*:'))
+name_behaviour = re.compile(
+    '(\d{d}\. )?((Rt\.? )?(Hon\. )?([A-Z]([a-z{a}]+|[A-Z{a}]+|\.?))([ -{a}][tA-Z]([öa-z{a}]+|[ÖA-Z{a}]+|\.?))+)( \(|:)'.format(
+        a=apostrophes, d='{1,2}'))
 
 
 def tuhituhikifile(volume, debates, index_writer, corpus_writer):
@@ -253,8 +255,8 @@ def main():
     except Exception as e:
         raise e
     finally:
-        print("--- Job took {} ---".format(get_rate()))
-        print('Looped through {} strings while processing {}'.format(most_loops, longest_day))
+        print(f"--- Job took {get_rate()} ---")
+        print(f'Looped through {most_loops} strings while processing {longest_day}')
 
 
 start_time = time.time()
@@ -269,10 +271,10 @@ def get_rate():
     if m:
         m = int(m)
         if h:
-            return '{} hours {} minutes {} seconds'.format(int(h), m, s)
+            return f'{int(h)} hours {m} minutes {s} seconds'
         else:
-            return '{} minutes {} seconds'.format(m, s)
-    return '{} seconds'.format(s)
+            return f'{m} minutes {s} seconds'
+    return f'{s} seconds'
 
 
 if __name__ == '__main__':

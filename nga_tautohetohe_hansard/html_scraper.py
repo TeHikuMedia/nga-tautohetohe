@@ -35,7 +35,7 @@ class HansardTuhingaScraper:
         exception_flag = None
 
         try:
-            get_stuff = urlopen('{}{}'.format(hansard_url, self.url))
+            get_stuff = urlopen(f'{hansard_url}{self.url}')
         except Exception as e:
             print(e, '\nTrying alternative URL...')
             try:
@@ -55,7 +55,7 @@ class HansardTuhingaScraper:
             self.kōrero_hupo = self.soup.find_all('div', attrs={'class': 'section'})
 
         # Make soup from hansard metadata
-        meta_url = '{}{}'.format(alternative_URL, '/metadata')
+        meta_url = f'{alternative_URL}{"/metadata"}'
         self.metasoup = bs(urlopen(meta_url), 'html.parser').table
 
     def horoi_transcript_factory(self):
@@ -125,11 +125,11 @@ def scrape_Hansard_URLs():
     doc_url_list = []
 
     if Path(filename).exists():
-        with open(filename, 'r') as url_file:
+        with open(filename, 'r', newline='', encoding='utf8') as url_file:
             for row in csv.DictReader(url_file):
                 doc_url_list.append(row['url'])
     else:
-        with open(filename, 'w') as url_file:
+        with open(filename, 'w', newline='', encoding='utf8') as url_file:
             csv.writer(url_file).writerow(['retreived', 'url'])
 
     last_url = ''
@@ -137,7 +137,7 @@ def scrape_Hansard_URLs():
         last_url = doc_url_list[-1]
     new_list = get_new_urls(last_url)
 
-    with open(filename, 'a') as url_file:
+    with open(filename, 'a', newline='', encoding='utf8') as url_file:
         url_writer = csv.writer(url_file)
         for url in reversed(new_list):
             doc_url_list.append(url[1])
@@ -149,7 +149,7 @@ def scrape_Hansard_URLs():
 
 
 def get_new_urls(last_url):
-    rhr_soup = bs(urlopen('{}{}'.format(hansard_url, '/en/pb/hansard-debates/rhr/')), 'html.parser')
+    rhr_soup = bs(urlopen(f'{hansard_url}{"/en/pb/hansard-debates/rhr/"}'), 'html.parser')
 
     new_list = []
     while True:
@@ -167,7 +167,7 @@ def get_new_urls(last_url):
         next_page = rhr_soup.find('li', attrs={'class', 'pagination__next'})
 
         if next_page:
-            next_url = '{}{}'.format(hansard_url, next_page.find('a')['href'])
+            next_url = f'{hansard_url}{next_page.find("a")["href"]}'
             rhr_soup = bs(urlopen(next_url), 'html.parser')
         else:
             return new_list
@@ -179,7 +179,7 @@ def aggregate_hansard_corpus(doc_urls):
     waiting_for_reo = []
 
     if Path(rāindexfilename).exists():
-        with open(rāindexfilename, 'r') as i:
+        with open(rāindexfilename, 'r', newline='', encoding='utf8') as i:
             record_list = [row for row in csv.DictReader(i)]
 
             # rowcount = 0
@@ -190,12 +190,12 @@ def aggregate_hansard_corpus(doc_urls):
             #         waiting_for_reo.append(rowcount)
             #     rowcount += 1
     else:
-        with open(rāindexfilename, 'w') as i:
+        with open(rāindexfilename, 'w', newline='', encoding='utf8') as i:
             i_writer = csv.DictWriter(i, rāindex_fieldnames)
             i_writer.writeheader()
 
     if not Path(corpusfilename).exists():
-        with open(corpusfilename, 'w') as c:
+        with open(corpusfilename, 'w', newline='', encoding='utf8') as c:
             c_writer = csv.DictWriter(c, reo_fieldnames)
             c_writer.writeheader()
 
@@ -216,7 +216,7 @@ def aggregate_hansard_corpus(doc_urls):
     else:
         remaining_urls = doc_urls
 
-    with open(rāindexfilename, 'a') as i, open(corpusfilename, 'a') as c:
+    with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='', encoding='utf8') as c:
         index_writer = csv.DictWriter(i, rāindex_fieldnames)
         corpus_writer = csv.DictWriter(c, reo_fieldnames)
 
@@ -240,7 +240,7 @@ def main():
     aggregate_hansard_corpus(hansard_doc_urls)
 
     print('Web Hansard scraping successful')
-    print("--- Job took %s seconds ---\n" % (time.time() - start_time))
+    print(f"--- Job took {time.time() - start_time} seconds ---\n")
 
 
 if __name__ == '__main__':

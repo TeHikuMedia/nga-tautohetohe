@@ -5,7 +5,7 @@ There are two installation options:
 1. Run the setup file
 2. Copy taumahi.py and taumahi_tūtira directly into the same directory as the unified_hansard_scraper.py
 
-This project downloads all the NZ Parliament Hansard debates since 1854 until the present day and then searches through them for strings of text that kōrero te reo Māori.
+This project searches through all the NZ Parliament Hansard debates since 1854 until the present day for strings of text that kōrero te reo Māori.
 The Hansard debates volumes can be accessed online via the official NZ Parliament website: https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/
 
 The Hansard volumes come in three main digital formats:
@@ -17,7 +17,7 @@ These volumes also switch from non-macronised vowels to having macronised vowels
 A different script has been written to sort through the text and extract te reo for each of these formats.
 Each of these scripts is found in the sub-folder 'nga_tautohetohe_hansard'.
 A unified_hansard_scraper.py has been written to run each of these scripts sequentially in the order of the Hansard volumes.
-The script always picks up where from where it last got up too, so no worries if you pause or cancel the programme part way through.
+The script always picks up where from where it last got up too, so no worries if you cancel the programme part way through then rerun later.
 
 Downloading and processing the first 488 volumes will take 1-3 days due to very slow download speed from the server where they are stored, whereas downloading and processing the debates from 1987 onwards will take about 1-3 hours.
 TODO: Upload all OCR volume text into a Google Drive folder for faster download. 

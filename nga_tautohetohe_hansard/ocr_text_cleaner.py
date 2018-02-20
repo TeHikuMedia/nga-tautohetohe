@@ -3,21 +3,18 @@ import csv
 import time
 import re
 from taumahi import *
-from os import listdir, makedirs
+from os import listdir
 from os.path import isfile, join, exists
 
 indir = '1854-1987'
-outdir = 'processed'
 volumeindex_filename = 'hansardvolumeindex.csv'
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
-volumeindex_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'downloaded', 'processed']
+volumeindex_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'format', 'downloaded', 'processed']
 dayindex_fieldnames = ['url', 'volume', 'date1', 'date2', 'reo', 'ambiguous', 'other', 'percent', 'retrieved', 'format',
                        'incomplete']
 reo_fieldnames = ['url', 'volume', 'date1', 'date2', 'utterance', 'speaker', 'reo', 'ambiguous', 'other', 'percent',
                   'text']
-# Processing the text is local resource intensive,
-# therefore number of threads should be comparable to the CPU specs.
 hathi_domain = 'https://babel.hathitrust.org'
 months = {1: 'january', 2: 'february', 3: 'march', 4: 'april', 5: 'may', 6: 'june', 7: 'july', 8: 'august',
           9: 'september', 10: 'october', 11: 'november', 12: 'december'}
@@ -38,7 +35,7 @@ def get_file_list():
 def read_index_rows():
     while True:
         rows = []
-        with open(volumeindex_filename, 'r') as v_index:
+        with open(volumeindex_filename, 'r', newline='', encoding='utf8') as v_index:
             reader = csv.DictReader(v_index)
             for row in reader:
                 if not row['name'].isdigit() or int(row['name']) < 483:
@@ -49,11 +46,11 @@ def read_index_rows():
 def process_csv_files():
     # Make output files if not exist:
     if not exists(rāindexfilename):
-        with open(rāindexfilename, 'w') as f:
+        with open(rāindexfilename, 'w', newline='', encoding='utf8') as f:
             writer = csv.DictWriter(f, dayindex_fieldnames)
             writer.writeheader()
     if not exists(corpusfilename):
-        with open(corpusfilename, 'w') as f:
+        with open(corpusfilename, 'w', newline='', encoding='utf8') as f:
             writer = csv.DictWriter(f, reo_fieldnames)
             writer.writeheader()
 
@@ -76,7 +73,7 @@ def process_csv(args):
         rows.append(row)
 
     while True:
-        with open(volumeindex_filename, 'w') as v_index:
+        with open(volumeindex_filename, 'w', newline='', encoding='utf8') as v_index:
             writer = csv.DictWriter(v_index, volumeindex_fieldnames)
             writer.writeheader()
             writer.writerows(rows)
@@ -113,9 +110,9 @@ class Volume(object):
         """Invoke this method from a class instance to process the debates."""
 
         # Open volume csv & read row pages:
-        with open('{}/{}'.format(indir, self.filename), 'r') as kiroto:
+        with open(f'{indir}/{self.filename}', 'r', newline='', encoding='utf8') as kiroto:
             reader = csv.DictReader(kiroto)
-            day = []
+            day = []  # day list will hold pages of text
             for page in reader:
                 if not (page['url'].endswith(('c', 'l', 'x', 'v', 'i')) or page['page'] == '1') and re.search(
                         '[a-zA-Z]', page['text']):
@@ -141,14 +138,6 @@ class Volume(object):
                     day.append(previoustext.strip())
                 self.__process_day(day)
 
-                # Write day statistics:
-                if not self.same_day_flag and sum(self.totals.values()) > 50:
-                    self.day['percent'] = get_percentage(**self.totals)
-                    self.day.update(self.totals)
-                    with open(rāindexfilename, 'a') as output:
-                        writer = csv.DictWriter(output, dayindex_fieldnames)
-                        writer.writerow(self.day)
-
                 # Generate numerical date from the regex match and check if actually is a later date:
                 self.same_day_flag = False
                 r = next_day.group(1)
@@ -165,6 +154,14 @@ class Volume(object):
                     rā = r
                 else:
                     self.same_day_flag = True
+
+                # Write day statistics:
+                if not self.same_day_flag and sum(self.totals.values()) > 50:
+                    self.day['percent'] = get_percentage(**self.totals)
+                    self.day.update(self.totals)
+                    with open(rāindexfilename, 'a', newline='', encoding='utf8') as output:
+                        writer = csv.DictWriter(output, dayindex_fieldnames)
+                        writer.writerow(self.day)
 
                 # Reset page list and day totals, get meta info for next day:
                 day = []
@@ -265,7 +262,8 @@ class Volume(object):
                     utterance = [sentence]
 
             else:
-                # Check to see if consecutive condition broken and if so then write the previous te reo speech and clear list:
+                # Check to see if consecutive condition broken
+                # if so then write the previous te reo speech to output and clear list:
                 if not consecutive['other']:
                     if utterance:
                         self.__write_row(utterance)
@@ -317,7 +315,7 @@ class Volume(object):
                     self.speech['text'] = text
                     self.speech.update(nums)
                     print(self.speech['text'])
-                    with open(corpusfilename, 'a') as output:
+                    with open(corpusfilename, 'a', newline='', encoding='utf8') as output:
                         writer = csv.DictWriter(output, reo_fieldnames)
                         writer.writerow(self.speech)
 
