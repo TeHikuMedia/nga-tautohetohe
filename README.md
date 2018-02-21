@@ -1,6 +1,6 @@
 # nga-tautohetohe
 
-This project relies on taumahi.py which can be downloaded from https://github.com/TeHikuMedia/nga-kupu.
+This project relies on taumahi.py which can be downloaded from the git repo at https://github.com/TeHikuMedia/nga-kupu.
 There are two installation options:
 1. Run the setup file
 2. Copy taumahi.py and taumahi_tūtira directly into the same directory as the unified_hansard_scraper.py
@@ -8,9 +8,14 @@ There are two installation options:
 This project searches through all the NZ Parliament Hansard debates since 1854 until the present day for strings of text that kōrero te reo Māori.
 The Hansard debates volumes can be accessed online via the official NZ Parliament website: https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/
 
-The Hansard volumes come in three main digital formats:
-1. The first 488 volumes from beginning of the records in 1854 until 1987 are OCR scans from analogue printouts.
-2. Volumes 483 - 605 between 1987 - 2002 are PDFs produced from computer word processing software available at https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CRGZkMWNf.
+The Hansard volumes come in three main digital formats deriving from the three different eras of publishing technology:
+1. The first 488 volumes from beginning of the records in 1854 until 1987 are OCR scans from analogue printing.
+The style of writing in the Hansard reports up to volume 409 (28 February 1977) is often in a narrative format in English and does not always directly quote everything that each MP said in parliament, whereas every record from volume 410 onwards only records direct quotations of what each speaker said. It is possible (perhaps a Hansard expert could better clarify) that te reo Māori was spoken on various occasions but the intent of the speech was only recorded in English narrative.
+For the most part letters and words have been interpreted correctly by the OCR program.
+However the OCR scans are not perfect.
+There are frequent OCR mistakes resulting in many incorrectly spelled words which reduce the overall quality of the digital text, especially in the earlier volumes. 
+2. Volumes 483 - 605 between 1987 - 2002 are PDFs produced from computer word processing software.
+The PDFs are available at https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CRGZkMWNf.
 These volumes also switch from non-macronised vowels to having macronised vowels at some point in the 90s (TODO: Find out when and update README).
 3. All daily debates from 2003 onwards can be accessed online as HTML formatted webpages. Volume compilations can also be downloaded as PDFs from https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CWWN5ZVEyQVYyNWM.
 
