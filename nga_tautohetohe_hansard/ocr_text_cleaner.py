@@ -131,7 +131,7 @@ class Volume(object):
 
         while True:
             next_day = date_pattern[self.flag294].search(text)
-            if next_day:
+            if next_day and not next_day.group(0).startswith('Swainson'):
                 header = None if looped else header_pattern.match(text[:next_day.start()])
                 previoustext = text[:next_day.start()] if not header else text[header.end():next_day.start()]
                 # if not looped:

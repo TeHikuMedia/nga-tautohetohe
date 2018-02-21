@@ -11,10 +11,10 @@ volumeindex_filename = 'hansardvolumeindex.csv'
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
 volumeindex_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'format', 'downloaded', 'processed']
-rāindex_fieldnames = ['url', 'volume', 'date1', 'date2', 'reo', 'ambiguous', 'other', 'percent', 'retrieved', 'format',
+rāindex_fieldnames = ['retrieved', 'url', 'volume', 'format', 'date1', 'date2', 'reo', 'ambiguous', 'other', 'percent',
                       'incomplete']
-reo_fieldnames = ['url', 'volume', 'date1', 'date2', 'utterance', 'speaker', 'reo', 'ambiguous', 'other', 'percent',
-                  'text']
+reo_fieldnames = ['url', 'volume', 'format', 'date1', 'date2', 'utterance', 'speaker', 'reo', 'ambiguous', 'other',
+                  'percent', 'text']
 
 
 class Speech:
@@ -47,7 +47,8 @@ def process_txt_files(dirpath):
             csv.DictWriter(f, reo_fieldnames).writeheader()
 
     # Open output files and get ready to extract and write volume information:
-    with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='', encoding='utf8') as c:
+    with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='',
+                                                                            encoding='utf8') as c:
         index_writer = csv.DictWriter(i, rāindex_fieldnames)
         corpus_writer = csv.DictWriter(c, reo_fieldnames)
 
@@ -75,7 +76,7 @@ def process_txt_files(dirpath):
                 writer = csv.DictWriter(vol_file, volumeindex_fieldnames)
                 writer.writeheader()
                 writer.writerows(v_rows)
-            print('{} processed at {} after {}\n'.format(f, datetime.now(), get_rate()))
+            print(f'{f} processed at {datetime.now()} after {get_rate()}\n')
 
 
 def get_file_list(dirpath):
@@ -166,7 +167,7 @@ def get_daily_debates(txt, date=None):
         debate_list = get_daily_debates(txt=txt[next_date.end():], date=next_date)
         txt = txt[:next_date.start()]
     loops = most_loops
-    debate_list.append([date.group(0), get_speeches(txt)])
+    debate_list.append([date, get_speeches(txt)])
     print(f'Processed {date.group(0)}')
     if most_loops > loops:
         global longest_day
@@ -211,7 +212,7 @@ def get_speeches(txt):
 
 
 # Regex to look for meeting date then split into date-debate key-value map
-debate_date = re.compile(pattern=r'[A-Z]{6,9}, \d{1,2} [A-Z]{3,9} \d{4}')
+debate_date = re.compile(pattern=r'[A-Z]{6,9}, (\d{1,2}) ([A-Z]{3,9}) (\d{4})')
 
 # Regex to check each paragraph matches for a new speaker, then extracts the name
 new_speaker = re.compile('{titles}({speaker}|([^,\n]*\n){speaker})'.format(
@@ -222,9 +223,12 @@ name_behaviour = re.compile(
 
 
 def tuhituhikifile(volume, debates, index_writer, corpus_writer):
+    # Write te reo and day stats to file output:
+
     for date, speeches in reversed(debates):
         totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
-        i_row = {'url': volume['url'], 'volume': volume['name'], 'date': date}
+        i_row = {'url': volume['url'], 'volume': volume['name'], 'date1': date.group(0),
+                 'date2': f'{date.group(3)}-{date.group(2)}-{date.group(1)}'}
         c_row = {'utterance': 0}
         for k, v in i_row.items():
             c_row[k] = v

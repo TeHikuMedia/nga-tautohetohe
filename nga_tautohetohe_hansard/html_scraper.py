@@ -12,16 +12,23 @@ hansard_url = 'https://www.parliament.nz'
 hansard_meta_url = '{}{}'.format(hansard_url, '/en/document/')
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
-rāindex_fieldnames = ['url', 'volume', 'date', 'reo', 'ambiguous', 'other', 'percent', 'retrieved', 'format',
+rāindex_fieldnames = ['retrieved', 'url', 'volume', 'format', 'date1', 'date2', 'reo', 'ambiguous', 'other', 'percent',
                       'incomplete']
-reo_fieldnames = ['url', 'volume', 'date', 'utterance', 'speaker', 'reo', 'ambiguous', 'other', 'percent', 'text']
+reo_fieldnames = ['url', 'volume', 'format', 'date1', 'date2', 'utterance', 'speaker', 'reo', 'ambiguous', 'other',
+                  'percent', 'text']
+
+# Vars for generating clean numeric dates from OCRed dates:
+months = {1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun', 7: 'jul', 8: 'aug',
+          9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'}
+inv_months = {v: k for k, v in months.items()}
+rā = māhina = tau = None
 
 
 class HansardTuhingaScraper:
     """Class for scraping HTML formatted debates from websites."""
 
     def __init__(self, url):
-        self.url = '{}{}'.format(hansard_url, url)
+        self.url = f'{hansard_url}{url}'
         self.soup = self.metasoup = self.kōrero_hupo = None
         self.hanga_hupo()
         self.retrieved = datetime.now()
@@ -30,7 +37,7 @@ class HansardTuhingaScraper:
         # query the website and parse the returned html using beautiful soup
 
         doc_id = self.url.split('/')[8]
-        alternative_URL = '{}{}'.format(hansard_meta_url, doc_id)
+        alternative_url = f'{hansard_meta_url}{doc_id}'
         get_stuff = ''
         exception_flag = None
 
@@ -39,8 +46,8 @@ class HansardTuhingaScraper:
         except Exception as e:
             print(e, '\nTrying alternative URL...')
             try:
-                get_stuff = urlopen(alternative_URL)
-                exception_flag, self.url = True, alternative_URL
+                get_stuff = urlopen(alternative_url)
+                exception_flag, self.url = True, alternative_url
                 print('\nSuccess!\n')
             except Exception as e:
                 raise Exception(e, '\nCould not find data')
@@ -55,7 +62,7 @@ class HansardTuhingaScraper:
             self.kōrero_hupo = self.soup.find_all('div', attrs={'class': 'section'})
 
         # Make soup from hansard metadata
-        meta_url = f'{alternative_URL}{"/metadata"}'
+        meta_url = f'{alternative_url}{"/metadata"}'
         self.metasoup = bs(urlopen(meta_url), 'html.parser').table
 
     def horoi_transcript_factory(self):
@@ -63,7 +70,11 @@ class HansardTuhingaScraper:
         meta_data = self.metasoup.find_all('tr')
         for tr in meta_data:
             meta_entries[tr.th.get_text(" ", strip=True).lower()] = tr.td.get_text(" ", strip=True)
-        i_row = {'url': self.url, 'format': 'HTML','volume': re.search(r'Volume\s*([0-9]{3})', meta_entries['ref']).group(1),'date': meta_entries['date']}
+        i_row = {'url': self.url, 'format': 'HTML',
+                 'volume': re.search(r'Volume\s*([0-9]{3})', meta_entries['ref']).group(1),
+                 'date1': meta_entries['date']}
+        match = re.match('\d{1,2}.[a-zA-Z]{3}.\d{4}', meta_entries['date'])
+        i_row['date2'] = f'{match.group(3)}-{inv_months[match.group(2).lower()]}-{match.group(1)}'
         c_rows, c_row = [], {'utterance': 0}
         totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
         for k, v in i_row.items():
@@ -110,7 +121,8 @@ class HansardTuhingaScraper:
                     if (save_corpus and nums['reo'] > 2) or check:
                         c_row.update(nums)
                         c_row['text'] = clean_whitespace(kōrero)
-                        print('{date}: {title}\nutterance {utterance}, Maori = {reo}%\nname:{speaker}\n{text}\n'.format(title=meta_entries['short title'], **c_row))
+                        print('{date}: {title}\nutterance {utterance}, Maori = {reo}%\nname:{speaker}\n{text}\n'.format(
+                            title=meta_entries['short title'], **c_row))
                         c_rows.append(dict(c_row))
         print('Time:', self.retrieved)
         i_row['percent'] = get_percentage(**totals)
@@ -216,7 +228,8 @@ def aggregate_hansard_corpus(doc_urls):
     else:
         remaining_urls = doc_urls
 
-    with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='', encoding='utf8') as c:
+    with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='',
+                                                                            encoding='utf8') as c:
         index_writer = csv.DictWriter(i, rāindex_fieldnames)
         corpus_writer = csv.DictWriter(c, reo_fieldnames)
 
