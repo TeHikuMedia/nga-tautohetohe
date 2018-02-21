@@ -11,15 +11,33 @@ volumeindex_filename = 'hansardvolumeindex.csv'
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
 volumeindex_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'format', 'downloaded', 'processed']
-dayindex_fieldnames = ['url', 'volume', 'date1', 'date2', 'reo', 'ambiguous', 'other', 'percent', 'retrieved', 'format',
+dayindex_fieldnames = ['retrieved', 'url', 'volume', 'format', 'date1', 'date2', 'reo', 'ambiguous', 'other', 'percent',
                        'incomplete']
-reo_fieldnames = ['url', 'volume', 'date1', 'date2', 'utterance', 'speaker', 'reo', 'ambiguous', 'other', 'percent',
-                  'text']
+reo_fieldnames = ['url', 'volume', 'format', 'date1', 'date2', 'utterance', 'speaker', 'reo', 'ambiguous', 'other',
+                  'percent', 'text']
 hathi_domain = 'https://babel.hathitrust.org'
+
+# Vars for generating clean numeric dates from OCRed dates:
 months = {1: 'january', 2: 'february', 3: 'march', 4: 'april', 5: 'may', 6: 'june', 7: 'july', 8: 'august',
           9: 'september', 10: 'october', 11: 'november', 12: 'december'}
 inv_months = {v: k for k, v in months.items()}
 rā = māhina = tau = None
+
+
+def process_csv_files():
+    # Make output files if not exist:
+    if not exists(rāindexfilename):
+        with open(rāindexfilename, 'w', newline='', encoding='utf8') as f:
+            writer = csv.DictWriter(f, dayindex_fieldnames)
+            writer.writeheader()
+    if not exists(corpusfilename):
+        with open(corpusfilename, 'w', newline='', encoding='utf8') as f:
+            writer = csv.DictWriter(f, reo_fieldnames)
+            writer.writeheader()
+
+    # Process list of unprocessed volumes:
+    for result in map(process_csv, get_file_list()):
+        pass
 
 
 def get_file_list():
@@ -41,21 +59,6 @@ def read_index_rows():
                 if not row['name'].isdigit() or int(row['name']) < 483:
                     rows.append(row)
             return rows
-
-
-def process_csv_files():
-    # Make output files if not exist:
-    if not exists(rāindexfilename):
-        with open(rāindexfilename, 'w', newline='', encoding='utf8') as f:
-            writer = csv.DictWriter(f, dayindex_fieldnames)
-            writer.writeheader()
-    if not exists(corpusfilename):
-        with open(corpusfilename, 'w', newline='', encoding='utf8') as f:
-            writer = csv.DictWriter(f, reo_fieldnames)
-            writer.writeheader()
-
-    # Process list of unprocessed volumes:
-    map(process_csv, get_file_list())
 
 
 def process_csv(args):
@@ -89,22 +92,25 @@ class Volume(object):
     def __init__(self, filename, v):
         # Initialise instance and store some associated meta data:
         self.filename = filename
-        self.day = {'format': 'OCR'}
-        self.totals = {}
-        self.speech = {'utterance': 0}
+        self.day, self.speech, self.totals = {}, {'utterance': 0}, {'reo': 0, 'ambiguous': 0, 'other': 0}
+        self.day['format'] = self.speech['format'] = 'OCR'
         self.day['volume'] = self.speech['volume'] = v['name']
-        self.day['url'] = self.speech['url'] = v['url'] if v['url'].startswith('https') else '{}{}'.format(hathi_domain,
-                                                                                                           v['url'])
-        self.day['date1'] = v['period'][:v['period'].index('-').strip()]
-        self.day['retrieved'] = v['retrieved'] if 'retrieved' in v else v['retreived']
+        self.day['url'] = self.speech['url'] = v['url'] if v['url'].startswith('https') else f'{hathi_domain}{v["url"]}'
+        if 'retrieved' in v:
+            self.day['retrieved'] = v['retrieved']
+        else:
+            self.day['retrieved'] = v['retreived']
         self.flag294 = int(self.speech['volume'].isdigit() and int(self.speech['volume']) >= 294)
         self.flag410 = int(self.flag294 and int(self.speech['volume']) >= 410)
-        self.same_day_flag = False
 
+        date = re.match('(\d{1,2}) ([a-zA-Z]+) (\d{4})', v['period'])
         global rā, māhina, tau
-        rā = int(re.match('\d+', v['period']).group(0))
-        māhina = inv_months[re.search('[a-zA-Z]+', v['period']).group(0).lower()]
-        tau = int(self.day['date1'][-4:])
+        rā = int(date.group(1))
+        māhina = inv_months[date.group(2).lower()]
+        tau = int(date.group(3))
+        self.day['date1'] = self.speech['date1'] = date.group(0)
+        self.speech['date2'] = self.day['date2'] = f'{tau}-{māhina}-{rā}'
+        self.same_day_flag = False
 
     def process_pages(self):
         """Invoke this method from a class instance to process the debates."""
@@ -273,10 +279,10 @@ class Volume(object):
                     self.speech['utterance'] += 1
 
                 # Record nums count if text is part of speech:
-                if 5 < len(sentence):
-                    first_letter = re.search('[a-zA-Z£]', sentence)
-                    if first_letter:
-                        sentence = sentence[first_letter.start():]
+                first_letter = re.search('[a-zA-Z£]', sentence)
+                if first_letter:
+                    sentence = sentence[first_letter.start():]
+                    if 5 < len(sentence):
                         bad_egg = re.match(
                             '([^ A-Z]+ )?[A-Z][^ ]*(([^a-zA-Z]+[^ A-Z]*){1,2}[A-Z][^ ]*)*(([^a-zA-Z]+[^ A-Z]*){2})?',
                             sentence)

@@ -16,7 +16,7 @@ volumeindex_fieldnames = ['retrieved', 'url', 'name', 'period', 'session', 'form
 volumes_dir = '1854-1987'
 
 # Volume counts:
-num_volumes = 482 + 6 - 4  # 4 sources contain 2 volumes combined
+num_volumes = 482 + 6  # The first 6 volumes do not follow an incremental integer naming pattern
 complete = 0
 
 # Hathi network can download 100+ pages between errors,
@@ -54,7 +54,7 @@ def get_volume_meta():
             writer.writeheader()
 
     # Get remaining urls if they haven't been acquired yet:
-    if total < num_volumes:
+    if total < num_volumes - 4:
         for row in scrape_volume_urls(total):
             while True:
                 with write_lock, open(volumeindex_filename, 'a', newline='', encoding='utf8') as v_index:
@@ -77,6 +77,7 @@ def read_index_rows():
 
 
 def scrape_volume_urls(count):
+    # 4 sources contain 2 volumes combined
     if count > 69 + 6:
         count += 1
         if count > 96 + 6:
@@ -92,7 +93,7 @@ def scrape_volume_urls(count):
     previous_result = None
     with ThreadPool(num_volumes - count if num_threads > num_volumes - count else num_threads) as pool:
         for result in pool.imap(scrape_volume_url, volume_directory):
-            # Several volumes are combined, therefore check for duplicate url before yielding value:
+            # Check for duplicate source url to detect combined volumes:
             if previous_result:
                 if previous_result['url'] == result['url']:
                     result['name'] = f'{previous_result["name"]} - {result["name"]}'
@@ -197,6 +198,8 @@ def download_volume(volume):
         for row in read_index_rows():
             if row['downloaded']:
                 completion += 1
+                if row['name'].startswith(('70', '97', '136', '145')):
+                    completion += 1
             elif name == row['name']:
                 row['downloaded'] = True
             rows.append(row)
