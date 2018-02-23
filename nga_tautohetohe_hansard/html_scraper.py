@@ -10,6 +10,7 @@ from taumahi import *
 
 hansard_url = 'https://www.parliament.nz'
 hansard_meta_url = '{}{}'.format(hansard_url, '/en/document/')
+htmlindexfilename = 'hansardhtmlindex.csv'
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
 rāindex_fieldnames = ['retrieved', 'url', 'volume', 'format', 'date1', 'date2', 'reo', 'ambiguous', 'other', 'percent',
@@ -130,18 +131,15 @@ class HansardTuhingaScraper:
         return c_rows, i_row
 
 
-def scrape_Hansard_URLs():
-    filename = 'hansardWEBURLs.csv'
-
-    has_header = False
+def scrape_hansard_urls():
     doc_url_list = []
 
-    if Path(filename).exists():
-        with open(filename, 'r', newline='', encoding='utf8') as url_file:
+    if Path(htmlindexfilename).exists():
+        with open(htmlindexfilename, 'r', newline='', encoding='utf8') as url_file:
             for row in csv.DictReader(url_file):
                 doc_url_list.append(row['url'])
     else:
-        with open(filename, 'w', newline='', encoding='utf8') as url_file:
+        with open(htmlindexfilename, 'w', newline='', encoding='utf8') as url_file:
             csv.writer(url_file).writerow(['retreived', 'url'])
 
     last_url = ''
@@ -149,7 +147,7 @@ def scrape_Hansard_URLs():
         last_url = doc_url_list[-1]
     new_list = get_new_urls(last_url)
 
-    with open(filename, 'a', newline='', encoding='utf8') as url_file:
+    with open(htmlindexfilename, 'a', newline='', encoding='utf8') as url_file:
         url_writer = csv.writer(url_file)
         for url in reversed(new_list):
             doc_url_list.append(url[1])
@@ -249,7 +247,7 @@ def aggregate_hansard_corpus(doc_urls):
 def main():
     start_time = time.time()
 
-    hansard_doc_urls = scrape_Hansard_URLs()
+    hansard_doc_urls = scrape_hansard_urls()
     aggregate_hansard_corpus(hansard_doc_urls)
 
     print('Web Hansard scraping successful')

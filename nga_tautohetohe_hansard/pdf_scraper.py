@@ -98,34 +98,33 @@ def get_file_list(dirpath):
 
 
 def scrape_volume_urls(last_index):
-    switch1 = switch2 = False
+    index = 483 if not (last_index and last_index.isdigit()) else int(last_index) + 1
+    switch2 = index > 605  # Break condition
+    index += 6
 
     # Scrape meta data from table list of Hansard volumes
     for tr in bs(urlopen('https://www.parliament.nz/en/pb/hansard-debates/historical-hansard/'), 'html.parser').select(
-            '.wikitable')[0]('tr'):
+            '.wikitable')[0]('tr')[index:]:
         # Sort data from each cell of each row of table list into list of dictionaries
-        row = {'format': 'PDF'}
+        row = {'format': 'PDF', 'downloaded': True, 'processed': None}
         row_cells = tr('td')
-        switch3 = False
+        switch3 = False  # 0 : second column, 1 : third column
         for cell in row_cells:
-            if cell.a:
-                name = cell.get_text(strip=True)
-                if switch1:
-                    switch2 = not (not name.isdigit() or int(name) < 606)
-                    if switch2:
-                        break
-                    else:
-                        row['name'] = name
-                        row['url'] = cell.a['href']
-                        row['retrieved'] = datetime.now()
-                else:
-                    switch1 = name == last_index
+            a = cell.find(lambda tag: tag.has_attr('href'))
+            if a:
+                name = cell.get_text(' ', strip=True)
+                switch2 = int(name) > 605
+                if switch2:
                     break
-            else:
-                if switch3:
-                    row['session'] = cell.get_text().strip()
                 else:
-                    row['period'] = cell.string.strip()
+                    row['name'] = name
+                    row['url'] = a['href']
+                    row['retrieved'] = datetime.now()
+            else:
+                if switch3:  # third column
+                    row['session'] = cell.get_text(' ').strip()
+                else:  # second column
+                    row['period'] = cell.get_text(' ').strip()
                     switch3 = True
         else:
             print('Got link to volume:', row['name'])
@@ -142,15 +141,15 @@ def read_index_rows():
             reader = csv.DictReader(v_index)
             for row in reader:
                 rows.append(row)
-        last_entry = row[-1]['name']
+        last_entry = rows[-1]['name']
 
         # Scrape remaining volume urls from parliament website & save to file if the index doesn't have them yet:
         if not last_entry.isdigit() or int(last_entry) < 606:
             with open(volumeindex_filename, 'a', newline='', encoding='utf8') as v_index:
                 writer = csv.DictWriter(v_index, volumeindex_fieldnames)
-                entries = scrape_volume_urls(last_entry)
-                writer.writerows(entries)
-                rows.extend(entries)
+                for entry in scrape_volume_urls(last_entry):
+                    writer.writerow(entry)
+                    rows.append(entry)
 
         return rows
 
