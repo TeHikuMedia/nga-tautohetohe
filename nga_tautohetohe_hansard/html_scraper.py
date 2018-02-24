@@ -40,16 +40,24 @@ class HansardTuhingaScraper:
         alternative_url = f'{hansard_meta_url}{self.doc_id}'
         get_stuff = ''
         exception_flag = None
-        try:
-            get_stuff = urlopen(self.url)
-        except Exception as e:
-            print(e, '\nTrying alternative URL...')
+        count = 0
+        while True:
             try:
-                get_stuff = urlopen(alternative_url)
-                exception_flag, self.url = True, alternative_url
-                print('\nSuccess!\n')
+                get_stuff = urlopen(self.url)
+                break
             except Exception as e:
-                raise Exception(e, '\nCould not find data')
+                count += 1
+                if count > 3:
+                    print(e, '\nTrying alternative URL...')
+                    try:
+                        get_stuff = urlopen(alternative_url)
+                        exception_flag, self.url = True, alternative_url
+                        print('\nSuccess!\n')
+                        break
+                    except Exception as e:
+                        raise Exception(e, '\nCould not find data')
+                else:
+                    time.sleep(3)
 
         self.soup = bs(get_stuff, 'html.parser')
 
@@ -62,7 +70,12 @@ class HansardTuhingaScraper:
 
         # Make soup from hansard metadata
         meta_url = f'{alternative_url}{"/metadata"}'
-        self.metasoup = bs(urlopen(meta_url), 'html.parser').table
+        while True:
+            try:
+                self.metasoup = bs(urlopen(meta_url), 'html.parser').table
+                break
+            except:
+                time.sleep(3)
 
     def horoi_transcript_factory(self):
         meta_entries = {}
@@ -222,8 +235,6 @@ def aggregate_hansard_corpus(doc_urls):
 
         print('---\n')
 
-# todo: check 2003/4 - 4 - 1
-# todo: Add try catch loop to url opener
 
 def main():
     start_time = time.time()
