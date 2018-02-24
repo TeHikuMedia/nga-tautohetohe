@@ -51,37 +51,37 @@ def process_txt_files(dirpath):
         with open(corpusfilename, 'w', newline='', encoding='utf8') as f:
             csv.DictWriter(f, reo_fieldnames).writeheader()
 
-    # Open output files and get ready to extract and write volume information:
-    with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='',
-                                                                            encoding='utf8') as c:
-        index_writer = csv.DictWriter(i, rāindex_fieldnames)
-        corpus_writer = csv.DictWriter(c, reo_fieldnames)
+    # Iterate through volume file list:
+    for f, v in get_file_list(dirpath):
+        print(f'\nProcessing {f}:\n')
 
-        # Iterate through volume file list extracting te reo corpus and information about each day of debates:
-        for f, v in get_file_list(dirpath):
-            print(f'\nProcessing {f}:\n')
+        # Read from volume text files
+        txt = None
+        with open(f'{dirpath}/{f}', 'r', newline='', encoding='utf8') as hansard_txt:
+            txt = sub_vowels(page_break.sub('\n', hansard_txt.read()))
+            txt = re.sub(r'\[[^\]]*]', '', txt)
 
-            # Read from volume text files
-            with open(f'{dirpath}/{f}', 'r', newline='', encoding='utf8') as hansard_txt:
-                txt = sub_vowels(page_break.sub('\n', hansard_txt.read()))
-                txt = re.sub(r'\[[^\]]*]', '', txt)
+        # Sort through text with RegEx,
+        # Extracting te reo corpus and information about each day of debates,
+        # Write to file:
+        with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='',
+                                                                                encoding='utf8') as c:
+            tuhituhikifile(v, get_daily_debates(txt), csv.DictWriter(i, rāindex_fieldnames),
+                           csv.DictWriter(c, reo_fieldnames))
 
-                # Sort through text with RegEx then write output:
-                tuhituhikifile(v, get_daily_debates(txt), index_writer, corpus_writer)
-
-            # Update record of processed volumes:
-            v_rows = []
-            with open(volumeindex_filename, 'r', newline='', encoding='utf8') as vol_file:
-                reader = csv.DictReader(vol_file)
-                for row in reader:
-                    if row['name'] == v['name']:
-                        row['processed'] = True
-                    v_rows.append(row)
-            with open(volumeindex_filename, 'w', newline='', encoding='utf8') as vol_file:
-                writer = csv.DictWriter(vol_file, volumeindex_fieldnames)
-                writer.writeheader()
-                writer.writerows(v_rows)
-            print(f'{f} processed at {datetime.now()} after {get_rate()}\n')
+        # Update record of processed volumes:
+        v_rows = []
+        with open(volumeindex_filename, 'r', newline='', encoding='utf8') as vol_file:
+            reader = csv.DictReader(vol_file)
+            for row in reader:
+                if row['name'] == v['name']:
+                    row['processed'] = True
+                v_rows.append(row)
+        with open(volumeindex_filename, 'w', newline='', encoding='utf8') as vol_file:
+            writer = csv.DictWriter(vol_file, volumeindex_fieldnames)
+            writer.writeheader()
+            writer.writerows(v_rows)
+        print(f'{f} processed at {datetime.now()} after {get_rate()}\n')
 
 
 def get_file_list(dirpath):

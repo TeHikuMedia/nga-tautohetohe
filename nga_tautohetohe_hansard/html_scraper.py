@@ -9,7 +9,7 @@ from datetime import datetime
 from taumahi import *
 
 hansard_url = 'https://www.parliament.nz'
-hansard_meta_url = '{}{}'.format(hansard_url, '/en/document/')
+hansard_meta_url = f'{hansard_url}{"/en/document/"}'
 htmlindexfilename = 'hansardhtmlindex.csv'
 rāindexfilename = 'hansardrāindex.csv'
 corpusfilename = 'hansardreomāori.csv'
@@ -29,6 +29,7 @@ class HansardTuhingaScraper:
     """Class for scraping HTML formatted debates from websites."""
 
     def __init__(self, url):
+        self.doc_id = url.split('/')[6]
         self.url = f'{hansard_url}{url}'
         self.soup = self.metasoup = self.kōrero_hupo = None
         self.hanga_hupo()
@@ -36,14 +37,11 @@ class HansardTuhingaScraper:
 
     def hanga_hupo(self):
         # query the website and parse the returned html using beautiful soup
-
-        doc_id = self.url.split('/')[8]
-        alternative_url = f'{hansard_meta_url}{doc_id}'
+        alternative_url = f'{hansard_meta_url}{self.doc_id}'
         get_stuff = ''
         exception_flag = None
-
         try:
-            get_stuff = urlopen(f'{hansard_url}{self.url}')
+            get_stuff = urlopen(self.url)
         except Exception as e:
             print(e, '\nTrying alternative URL...')
             try:
@@ -57,7 +55,7 @@ class HansardTuhingaScraper:
 
         if exception_flag:
             self.kōrero_hupo = self.soup.find('div', attrs={'class': 'section'}).select('div.section > div.section')
-        elif re.match(r'\d', doc_id):
+        elif re.match(r'\d', self.doc_id):
             self.kōrero_hupo = self.soup.select('div.Hansard > div')
         else:
             self.kōrero_hupo = self.soup.find_all('div', attrs={'class': 'section'})
@@ -74,7 +72,7 @@ class HansardTuhingaScraper:
         i_row = {'url': self.url, 'format': 'HTML',
                  'volume': re.search(r'Volume\s*([0-9]{3})', meta_entries['ref']).group(1),
                  'date1': meta_entries['date']}
-        match = re.match('\d{1,2}.[a-zA-Z]{3}.\d{4}', meta_entries['date'])
+        match = re.match('(\d{1,2}).([a-zA-Z]{3}).(\d{4})', meta_entries['date'])
         i_row['date2'] = f'{match.group(3)}-{inv_months[match.group(2).lower()]}-{match.group(1)}'
         c_rows, c_row = [], {'utterance': 0}
         totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
@@ -122,8 +120,9 @@ class HansardTuhingaScraper:
                     if (save_corpus and nums['reo'] > 2) or check:
                         c_row.update(nums)
                         c_row['text'] = clean_whitespace(kōrero)
-                        print('{date}: {title}\nutterance {utterance}, Maori = {reo}%\nname:{speaker}\n{text}\n'.format(
-                            title=meta_entries['short title'], **c_row))
+                        print(
+                            '{date1}: {title}\nutterance {utterance}, Maori = {reo}%\nname:{speaker}\n{text}\n'.format(
+                                title=meta_entries['short title'], **c_row))
                         c_rows.append(dict(c_row))
         print('Time:', self.retrieved)
         i_row['percent'] = get_percentage(**totals)
@@ -184,10 +183,7 @@ def get_new_urls(last_url):
 
 
 def aggregate_hansard_corpus(doc_urls):
-    c_rows = []
     record_list = []
-    waiting_for_reo = []
-
     if Path(rāindexfilename).exists():
         with open(rāindexfilename, 'r', newline='', encoding='utf8') as i:
             record_list = [row for row in csv.DictReader(i)]
@@ -201,48 +197,32 @@ def aggregate_hansard_corpus(doc_urls):
             #     rowcount += 1
     else:
         with open(rāindexfilename, 'w', newline='', encoding='utf8') as i:
-            i_writer = csv.DictWriter(i, rāindex_fieldnames)
-            i_writer.writeheader()
+            csv.DictWriter(i, rāindex_fieldnames).writeheader()
 
     if not Path(corpusfilename).exists():
         with open(corpusfilename, 'w', newline='', encoding='utf8') as c:
-            c_writer = csv.DictWriter(c, reo_fieldnames)
-            c_writer.writeheader()
+            csv.DictWriter(c, reo_fieldnames).writeheader()
 
     remaining_urls = []
-
     if record_list:
-        cond = False
-        last_record_url = record_list[-1]['url']
-
-        for record in doc_urls:
-            if cond:
-                remaining_urls.append(record)
-            if last_record_url == record:
-                cond = True
-
-        if not cond:
-            remaining_urls = doc_urls
+        last_record_url = record_list[-1]['url'].replace(hansard_url, '')
+        remaining_urls = doc_urls if (last_record_url not in doc_urls) else doc_urls[
+                                                                            doc_urls.index(last_record_url) + 1:]
     else:
         remaining_urls = doc_urls
 
-    with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='',
-                                                                            encoding='utf8') as c:
-        index_writer = csv.DictWriter(i, rāindex_fieldnames)
-        corpus_writer = csv.DictWriter(c, reo_fieldnames)
+    for doc_url in remaining_urls:
+        c_rows, i_row = HansardTuhingaScraper(doc_url).horoi_transcript_factory()
 
-        for doc_url in remaining_urls:
-            c_rows, i_row = HansardTuhingaScraper(doc_url).horoi_transcript_factory()
-
-            index_writer.writerow(i_row)
+        with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='',
+                                                                                encoding='utf8') as c:
+            csv.DictWriter(i, rāindex_fieldnames).writerow(i_row)
             if c_rows:
-                corpus_writer.writerows(c_rows)
+                csv.DictWriter(c, reo_fieldnames).writerows(c_rows)
 
-            print('---\n')
+        print('---\n')
 
-
-# def corpus_writer(doc_url, index_writer, corpus_writer):
-
+# todo: check 2003/4 - 4 - 1
 
 def main():
     start_time = time.time()
