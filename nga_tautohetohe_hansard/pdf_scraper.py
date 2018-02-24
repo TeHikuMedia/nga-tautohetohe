@@ -56,14 +56,11 @@ def process_txt_files(dirpath):
         with open(f'{dirpath}/{f}', 'r', newline='', encoding='utf8') as hansard_txt:
             txt = sub_vowels(page_break.sub('\n', hansard_txt.read()))
             txt = re.sub(r'\[[^\]]*]', '', txt)
+            txt = re.sub('(?<=\n)([A-Z][a-zA-Z]*( [A-Z][a-z]*)*|(Noes|Ayes)[^\n]*)\n', '', txt)
 
         # Sort through text with RegEx,
-        # Extracting te reo corpus and information about each day of debates,
-        # Write to file:
-        with open(rāindexfilename, 'a', newline='', encoding='utf8') as i, open(corpusfilename, 'a', newline='',
-                                                                                encoding='utf8') as c:
-            tuhituhikifile(v, get_daily_debates(txt), csv.DictWriter(i, rāindex_fieldnames),
-                           csv.DictWriter(c, reo_fieldnames))
+        # Extracting te reo corpus and information about each day of debates, then write to file:
+        tuhituhikifile(v, txt)
 
         # Update record of processed volumes:
         v_rows = []
@@ -155,25 +152,27 @@ def read_index_rows():
         return rows
 
 
-def get_daily_debates(txt, date=None):
-    if not date:
-        date = debate_date.search(txt)
-        txt = txt[date.end():]
+def get_daily_debates(text):
+    date = debate_date.search(text)
+    text = text[date.end():]
+    cond = True
 
-    print(f'Processing {date.group(0)}')
-    debate_list = []
-    next_date = debate_date.search(txt)
-    if next_date:
-        debate_list = get_daily_debates(txt=txt[next_date.end():], date=next_date)
-        txt = txt[:next_date.start()]
-    loops = most_loops
-    debate_list.append([date, get_speeches(txt)])
-    print(f'Processed {date.group(0)}')
-    if most_loops > loops:
-        global longest_day
-        longest_day = date.group(0)
-        print(f'Most strings! {most_loops}\n')
-    return debate_list
+    while cond:
+        loops = most_loops
+        print(f'Processing {date.group(0)}')
+        next_date = debate_date.search(text)
+        if next_date:
+            yield date, get_speeches(text[:next_date.start()])
+            date, text = next_date, text[next_date.end():]
+        else:
+            yield date, get_speeches(text)
+            cond = False
+
+        print(f'Processed {date.group(0)}')
+        if most_loops > loops:
+            global longest_day
+            longest_day = date.group(0)
+            print(f'Most strings! {most_loops}\n')
 
 
 def get_speeches(txt):
@@ -187,11 +186,15 @@ def get_speeches(txt):
         if loops >= 1000 and loops % 500 == 0:
             print('Loops exceeded', loops)
 
+        print('regex stall?')
         kaikōrero = new_speaker.match(txt)
+        print('didn't stall)
         if kaikōrero:
             name = re.match(name_behaviour, kaikōrero.group(3))
             if name:
+                print('speech')
                 speeches.append(Speech(speaker, process_sentences(paragraphs)))
+                print('a speech out')
                 paragraphs = []
                 speaker = name.group(2)
                 txt = txt[kaikōrero.end():]
@@ -270,13 +273,14 @@ name_behaviour = re.compile(
         a=apostrophes, d='{1,2}'))
 
 
-def tuhituhikifile(volume, debates, index_writer, corpus_writer):
+def tuhituhikifile(volume, text):
     # Write te reo and day stats to file output:
     rā = māhina = tau = None
     switch1 = True
     switch539 = volume['name'] == 539
 
-    for date, speeches in reversed(debates):
+    for date, speeches in get_daily_debates(text):
+        print('signal gen')
         r = date.group(1)
         r = 1 if (not r.isdigit() or int(r) < 1) else int(r) if int(r) <= 31 else 31
         m = date.group(2).lower()
@@ -301,23 +305,27 @@ def tuhituhikifile(volume, debates, index_writer, corpus_writer):
         c_row = {'utterance': 0}
         for k, v in i_row.items():
             c_row[k] = v
-        for speech in speeches:
-            for paragraph in speech.paragraphs:
-                for k, v in paragraph.ratios.items():
-                    if k != 'percent':
-                        totals[k] += v
+        with open(corpusfilename, 'a', newline='', encoding='utf8') as c:
+            corpus_writer = csv.DictWriter(c, reo_fieldnames)
+            for speech in speeches:
+                for paragraph in speech.paragraphs:
+                    for k, v in paragraph.ratios.items():
+                        if k != 'percent':
+                            totals[k] += v
 
-                c_row['utterance'] += 1
-                if paragraph.condition and paragraph.ratios['reo'] > 2:
-                    c_row.update({'text': paragraph.txt, 'speaker': speech.kaikōrero})
-                    c_row.update(paragraph.ratios)
-                    corpus_writer.writerow(c_row)
-                    print('Volume {volume}: {date1}\n Utterance {utterance}: {speaker}\nMaori = {percent}%\n{text}\n'.format(
-                        **c_row))
+                    c_row['utterance'] += 1
+                    if paragraph.condition and paragraph.ratios['reo'] > 2:
+                        c_row.update({'text': paragraph.txt, 'speaker': speech.kaikōrero})
+                        c_row.update(paragraph.ratios)
+                        corpus_writer.writerow(c_row)
+                        print(
+                            'Volume {volume}: {date1}\n Utterance {utterance}: {speaker}\nMaori = {percent}%\n{text}\n'.format(
+                                **c_row))
 
         i_row.update({'percent': get_percentage(**totals)})
         i_row.update(totals)
-        index_writer.writerow(i_row)
+        with open(rāindexfilename, 'a', newline='', encoding='utf8') as i:
+            csv.DictWriter(i, rāindex_fieldnames).writerow(i_row)
         print('Maori = {reo}, Ambiguous = {ambiguous}, Non-Māori = {other}, Percentage = {percent} %'.format(**i_row))
 
 
