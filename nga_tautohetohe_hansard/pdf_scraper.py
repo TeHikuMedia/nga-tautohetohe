@@ -188,7 +188,7 @@ def get_speeches(txt):
 
         print('regex stall?')
         kaikōrero = new_speaker.match(txt)
-        print('didn't stall)
+        print("didn't stall")
         if kaikōrero:
             name = re.match(name_behaviour, kaikōrero.group(3))
             if name:
