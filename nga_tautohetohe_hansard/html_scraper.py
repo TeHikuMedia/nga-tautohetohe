@@ -223,6 +223,7 @@ def aggregate_hansard_corpus(doc_urls):
         print('---\n')
 
 # todo: check 2003/4 - 4 - 1
+# todo: Add try catch loop to url opener
 
 def main():
     start_time = time.time()
