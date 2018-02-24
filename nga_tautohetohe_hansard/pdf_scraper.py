@@ -30,16 +30,12 @@ class Speech:
         self.paragraphs = paragraphs
 
 
-class Paragraph:
-    """This class stores a paragraph of text as well is numerical information about the text."""
+class Utterance:
+    """This class stores a passage of homogeneous text as well is numerical information about the text."""
 
     def __init__(self, txt):
         self.txt = txt
         self.condition, self.ratios = kupu_ratios(txt)
-
-
-# Regex to replace page breaks with new line
-page_break = re.compile('(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)')
 
 
 def process_txt_files(dirpath):
@@ -180,8 +176,6 @@ def get_daily_debates(txt, date=None):
     return debate_list
 
 
-# TODO: Search for tereo sentences and build speech if consecutive
-
 def get_speeches(txt):
     speeches = []
     paragraphs = []
@@ -236,35 +230,34 @@ def process_sentences(paragraphs):
             # Check to see if sentence is te reo Māori:
             c, nums = kupu_ratios(sentence, tohutō=has_tohutō)
             sentence = clean_whitespace(sentence)
-
+            length = nums['reo'] + nums['other'] + nums['ambiguous']
             # Add to list of consecutive Māori or non-Māori sentences,
             # Append parts of speech to the utterance list:
-            if c:
-                if consecutive_reo:
+            if length > 2:
+                if c:
                     reo.append(sentence)
+                    if not consecutive_reo:
+                        consecutive_reo = True
+                        consecutive_other = False
+                        utterances.append(Utterance(' '.join(other)))
+                        other = []
                 else:
-                    consecutive_reo = True
-                    consecutive_other = False
-                    utterances.append(Paragraph(' '.join(other)))
-                    other = []
-            else:
-                if consecutive_other:
                     other.append(sentence)
-                else:
-                    consecutive_other = True
-                    consecutive_reo = False
-                    utterances.append(Paragraph(' '.join(reo)))
-                    reo = []
+                    if not consecutive_other:
+                        consecutive_other = True
+                        consecutive_reo = False
+                        utterances.append(Utterance(' '.join(reo)))
+                        reo = []
     else:
         if consecutive_reo:
-            utterances.append(Paragraph(' '.join(reo)))
+            utterances.append(Utterance(' '.join(reo)))
         elif consecutive_other:
-            utterances.append(Paragraph(' '.join(other)))
+            utterances.append(Utterance(' '.join(other)))
     return utterances
 
 
-
-
+# Regex to replace page breaks with new line
+page_break = re.compile('(\n{0,2}\d{1,2} [a-zA-Z]{3,9} \d{4}.*\n\n\f)')
 
 # Regex to look for meeting date then split into date-debate key-value map
 debate_date = re.compile(pattern=r'[A-Z]{6,9}, (\d{1,2}) ([A-Z]{3,9}) (\d{4})')
@@ -303,7 +296,7 @@ def tuhituhikifile(volume, debates, index_writer, corpus_writer):
             rā = r
 
         totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
-        i_row = {'url': volume['url'], 'volume': volume['name'], 'date1': date.group(0),
+        i_row = {'url': volume['url'], 'volume': volume['name'], 'format': 'PDF', 'date1': date.group(0),
                  'date2': f'{tau}-{māhina}-{rā}'}
         c_row = {'utterance': 0}
         for k, v in i_row.items():
@@ -315,14 +308,14 @@ def tuhituhikifile(volume, debates, index_writer, corpus_writer):
                         totals[k] += v
 
                 c_row['utterance'] += 1
-                if paragraph.condition:
+                if paragraph.condition and paragraph.ratios['reo'] > 2:
                     c_row.update({'text': paragraph.txt, 'speaker': speech.kaikōrero})
                     c_row.update(paragraph.ratios)
                     corpus_writer.writerow(c_row)
-                    print('Volume {volume}: {date1}\n{speaker}: {utterance},\nMaori = {percent}%\n{text}\n'.format(
+                    print('Volume {volume}: {date1}\n Utterance {utterance}: {speaker}\nMaori = {percent}%\n{text}\n'.format(
                         **c_row))
 
-        i_row.update({'percent': get_percentage(**totals), 'format': 'PDF'})
+        i_row.update({'percent': get_percentage(**totals)})
         i_row.update(totals)
         index_writer.writerow(i_row)
         print('Maori = {reo}, Ambiguous = {ambiguous}, Non-Māori = {other}, Percentage = {percent} %'.format(**i_row))
