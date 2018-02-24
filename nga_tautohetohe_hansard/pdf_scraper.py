@@ -16,6 +16,11 @@ rāindex_fieldnames = ['retrieved', 'url', 'volume', 'format', 'date1', 'date2',
 reo_fieldnames = ['url', 'volume', 'format', 'date1', 'date2', 'utterance', 'speaker', 'reo', 'ambiguous', 'other',
                   'percent', 'text']
 
+# Vars for generating numeric dates from literal regexed dates:
+months = {1: 'january', 2: 'february', 3: 'march', 4: 'april', 5: 'may', 6: 'june', 7: 'july', 8: 'august',
+          9: 'september', 10: 'october', 11: 'november', 12: 'december'}
+inv_months = {v: k for k, v in months.items()}
+
 
 class Speech:
     """This class stores the speaker name and the paragraphs of the speaker's speech."""
@@ -70,7 +75,7 @@ def process_txt_files(dirpath):
                 reader = csv.DictReader(vol_file)
                 for row in reader:
                     if row['name'] == v['name']:
-                        row['processed'] = row['downloaded]'] = True
+                        row['processed'] = True
                     v_rows.append(row)
             with open(volumeindex_filename, 'w', newline='', encoding='utf8') as vol_file:
                 writer = csv.DictWriter(vol_file, volumeindex_fieldnames)
@@ -223,27 +228,43 @@ name_behaviour = re.compile(
 
 def tuhituhikifile(volume, debates, index_writer, corpus_writer):
     # Write te reo and day stats to file output:
+    rā = māhina = tau = None
+    switch = True
 
     for date, speeches in reversed(debates):
+        r = date.group(1)
+        r = 1 if (not r.isdigit() or int(r) < 1) else int(r) if int(r) <= 31 else 31
+        m = date.group(2).lower()
+        m = 1 if m not in inv_months else inv_months[m]
+        if switch:
+            tau = date.group(3)
+            rā, māhina = r, m
+            switch = False
+        elif 0 < m - māhina:
+            rā, māhina = r, m
+        elif 0 < r - rā:
+            rā = r
+
         totals = {'reo': 0, 'ambiguous': 0, 'other': 0}
         i_row = {'url': volume['url'], 'volume': volume['name'], 'date1': date.group(0),
-                 'date2': f'{date.group(3)}-{date.group(2)}-{date.group(1)}'}
+                 'date2': f'{tau}-{māhina}-{rā}'}
         c_row = {'utterance': 0}
         for k, v in i_row.items():
             c_row[k] = v
         for speech in speeches:
             for paragraph in speech.paragraphs:
+                for k, v in paragraph.ratios.items():
+                    if k != 'percent':
+                        totals[k] += v
+
                 c_row['utterance'] += 1
                 if paragraph.condition:
                     c_row.update({'text': clean_whitespace(paragraph.txt), 'speaker': speech.kaikōrero})
                     c_row.update(paragraph.ratios)
-                    print('Volume {volume}: {date}\n{speaker}: {utterance},\nMaori = {percent}%\n{text}\n'.format(
-                        **c_row))
                     corpus_writer.writerow(c_row)
+                    print('Volume {volume}: {date1}\n{speaker}: {utterance},\nMaori = {percent}%\n{text}\n'.format(
+                        **c_row))
 
-                for k, v in paragraph.ratios.items():
-                    if k != 'percent':
-                        totals[k] += v
         i_row.update({'percent': get_percentage(**totals), 'format': 'PDF'})
         i_row.update(totals)
         index_writer.writerow(i_row)
