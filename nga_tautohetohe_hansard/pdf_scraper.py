@@ -197,15 +197,15 @@ def get_speeches(txt):
         if kaikōrero:
             name = re.match(name_behaviour, kaikōrero.group(3))
             if name:
-                speeches.append(Speech(speaker, paragraphs))
+                speeches.append(Speech(speaker, process_sentences(paragraphs)))
                 paragraphs = []
                 speaker = name.group(2)
                 txt = txt[kaikōrero.end():]
 
         p, txt = get_paragraph(txt)
-        paragraphs.append(Paragraph(p))
+        paragraphs.append(p)
         if not txt:
-            speeches.append(Speech(speaker, paragraphs))
+            speeches.append(Speech(speaker, process_sentences(paragraphs)))
             break
 
     global most_loops
@@ -213,6 +213,57 @@ def get_speeches(txt):
         most_loops = loops
 
     return speeches
+
+
+def process_sentences(paragraphs):
+    # Check paragraph sentences to see if any contain te reo:
+    utterances, reo, other = [], [], []
+    consecutive_reo = consecutive_other = False
+    has_tohutō = re.search('[āēīōūĀĒĪŌŪ]', ' '.join(paragraphs)) is not None
+    for text in paragraphs:
+        loop_flag = True
+        while loop_flag:
+            # Look for sentence / statement like endings and separate text:
+            next_sentence = new_sentence.search(text)
+            sentence = ''
+            if next_sentence:
+                sentence = text[:next_sentence.start() + 1]
+                text = text[next_sentence.end():]
+            else:
+                sentence = text
+                loop_flag = False
+
+            # Check to see if sentence is te reo Māori:
+            c, nums = kupu_ratios(sentence, tohutō=has_tohutō)
+            sentence = clean_whitespace(sentence)
+
+            # Add to list of consecutive Māori or non-Māori sentences,
+            # Append parts of speech to the utterance list:
+            if c:
+                if consecutive_reo:
+                    reo.append(sentence)
+                else:
+                    consecutive_reo = True
+                    consecutive_other = False
+                    utterances.append(Paragraph(' '.join(other)))
+                    other = []
+            else:
+                if consecutive_other:
+                    other.append(sentence)
+                else:
+                    consecutive_other = True
+                    consecutive_reo = False
+                    utterances.append(Paragraph(' '.join(reo)))
+                    reo = []
+    else:
+        if consecutive_reo:
+            utterances.append(Paragraph(' '.join(reo)))
+        elif consecutive_other:
+            utterances.append(Paragraph(' '.join(other)))
+    return utterances
+
+
+
 
 
 # Regex to look for meeting date then split into date-debate key-value map
@@ -229,17 +280,23 @@ name_behaviour = re.compile(
 def tuhituhikifile(volume, debates, index_writer, corpus_writer):
     # Write te reo and day stats to file output:
     rā = māhina = tau = None
-    switch = True
+    switch1 = True
+    switch539 = volume['name'] == 539
 
     for date, speeches in reversed(debates):
         r = date.group(1)
         r = 1 if (not r.isdigit() or int(r) < 1) else int(r) if int(r) <= 31 else 31
         m = date.group(2).lower()
         m = 1 if m not in inv_months else inv_months[m]
-        if switch:
-            tau = date.group(3)
+        t = date.group(3)
+        if switch1:
+            tau = t
             rā, māhina = r, m
-            switch = False
+            switch1 = False
+        elif switch539 and t.isdigit() and t == 1994:
+            tau = t
+            rā, māhina = r, m
+            switch539 = False
         elif 0 < m - māhina:
             rā, māhina = r, m
         elif 0 < r - rā:
@@ -259,7 +316,7 @@ def tuhituhikifile(volume, debates, index_writer, corpus_writer):
 
                 c_row['utterance'] += 1
                 if paragraph.condition:
-                    c_row.update({'text': clean_whitespace(paragraph.txt), 'speaker': speech.kaikōrero})
+                    c_row.update({'text': paragraph.txt, 'speaker': speech.kaikōrero})
                     c_row.update(paragraph.ratios)
                     corpus_writer.writerow(c_row)
                     print('Volume {volume}: {date1}\n{speaker}: {utterance},\nMaori = {percent}%\n{text}\n'.format(

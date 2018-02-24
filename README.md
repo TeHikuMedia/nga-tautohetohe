@@ -16,7 +16,7 @@ However the OCR scans are not perfect.
 There are frequent OCR mistakes resulting in many incorrectly spelled words which reduce the overall quality of the digital text, especially in the earlier volumes. 
 2. Volumes 483 - 605 between 1987 - 2002 are PDFs produced from computer word processing software.
 The PDFs are available from a public [Google Drive folder](https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CRGZkMWNf).
-These volumes also switch from non-macronised vowels to having macronised vowels at some point in the 90s (TODO: Find out when and update README).
+These volumes also switch from non-macronised vowels to having macronised vowels at some point between 1993 - 1994.
 3. All daily debates from 2003 onwards can be accessed online as HTML formatted webpages [here](https://www.parliament.nz/en/pb/hansard-debates/rhr/). Volume compilations can also be downloaded as PDFs from another Google Drive folder [here](https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CWWN5ZVEyQVYyNWM).
 
 A different script has been written to sort through the text and extract te reo for each of these formats.

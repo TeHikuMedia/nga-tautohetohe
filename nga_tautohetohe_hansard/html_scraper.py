@@ -106,7 +106,7 @@ class HansardTuhingaScraper:
                 for strong in strong_tags:
                     string = strong.get_text(" ")
                     if not flag and string and re.search(r'[a-zA-Z]{5,}', string):
-                        flag, c_row['speaker'] = True, clean_whitespace(string)
+                        flag, c_row['speaker'] = True, clean_whitespace(string.replace(':', ''))
                     strong.replace_with(' ')
 
                 kōrero = paragraph.get_text(" ", strip=True)
