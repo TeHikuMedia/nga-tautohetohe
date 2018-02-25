@@ -161,7 +161,7 @@ def get_daily_debates(text):
         loops = most_loops
         print(f'Processing {date.group(0)}')
         next_date = debate_date.search(text)
-        if next_date:
+        if next_date and not next_date.group(0).startswith(('ANSLATION','JOURNMENT')):
             yield date, get_speeches(text[:next_date.start()])
             date, text = next_date, text[next_date.end():]
         else:
@@ -273,7 +273,7 @@ def tuhituhikifile(volume, text):
     # Write te reo and day stats to file output:
     rā = māhina = tau = None
     switch1 = True
-    switch539 = volume['name'] == 539
+    switch539 = int(volume['name']) == 539
 
     for date, speeches in get_daily_debates(text):
         r = date.group(1)
@@ -285,8 +285,8 @@ def tuhituhikifile(volume, text):
             tau = t
             rā, māhina = r, m
             switch1 = False
-        elif switch539 and t.isdigit() and t == 1994:
-            tau = t
+        elif switch539 and t.isdigit() and int(t) == 1994:
+            tau = int(t)
             rā, māhina = r, m
             switch539 = False
         elif 0 < m - māhina:
