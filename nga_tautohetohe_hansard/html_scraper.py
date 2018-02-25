@@ -47,7 +47,7 @@ class HansardTuhingaScraper:
                 break
             except Exception as e:
                 count += 1
-                if count > 3:
+                if count > 8:
                     print(e, '\nTrying alternative URL...')
                     try:
                         get_stuff = urlopen(alternative_url)

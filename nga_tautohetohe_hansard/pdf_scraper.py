@@ -33,9 +33,9 @@ class Speech:
 class Utterance:
     """This class stores a passage of homogeneous text as well is numerical information about the text."""
 
-    def __init__(self, txt):
+    def __init__(self, txt, has_tohutō):
         self.txt = txt
-        self.condition, self.ratios = kupu_ratios(txt)
+        self.condition, self.ratios = kupu_ratios(txt, has_tohutō)
 
 
 def process_txt_files(dirpath):
@@ -186,15 +186,11 @@ def get_speeches(txt):
         if loops >= 1000 and loops % 500 == 0:
             print('Loops exceeded', loops)
 
-        print('regex stall?')
         kaikōrero = new_speaker.match(txt)
-        print("didn't stall")
         if kaikōrero:
             name = re.match(name_behaviour, kaikōrero.group(3))
             if name:
-                print('speech')
                 speeches.append(Speech(speaker, process_sentences(paragraphs)))
-                print('a speech out')
                 paragraphs = []
                 speaker = name.group(2)
                 txt = txt[kaikōrero.end():]
@@ -242,20 +238,20 @@ def process_sentences(paragraphs):
                     if not consecutive_reo:
                         consecutive_reo = True
                         consecutive_other = False
-                        utterances.append(Utterance(' '.join(other)))
+                        utterances.append(Utterance(' '.join(other), has_tohutō))
                         other = []
                 else:
                     other.append(sentence)
                     if not consecutive_other:
                         consecutive_other = True
                         consecutive_reo = False
-                        utterances.append(Utterance(' '.join(reo)))
+                        utterances.append(Utterance(' '.join(reo), has_tohutō))
                         reo = []
     else:
         if consecutive_reo:
-            utterances.append(Utterance(' '.join(reo)))
+            utterances.append(Utterance(' '.join(reo), has_tohutō))
         elif consecutive_other:
-            utterances.append(Utterance(' '.join(other)))
+            utterances.append(Utterance(' '.join(other), has_tohutō))
     return utterances
 
 
@@ -280,7 +276,6 @@ def tuhituhikifile(volume, text):
     switch539 = volume['name'] == 539
 
     for date, speeches in get_daily_debates(text):
-        print('signal gen')
         r = date.group(1)
         r = 1 if (not r.isdigit() or int(r) < 1) else int(r) if int(r) <= 31 else 31
         m = date.group(2).lower()
