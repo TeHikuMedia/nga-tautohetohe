@@ -151,7 +151,7 @@ class Volume(object):
                 m = next_day.group(2).lower()
                 m = 1 if m not in inv_months else inv_months[m]
                 t = next_day.group(3)
-                if re.match('[ABCDE]', self.day['volume']) and t.isdigit() and int(t) - tau == 1:
+                if re.match('[ABCDE]'|'261', self.day['volume']) and t.isdigit() and int(t) - tau == 1:
                     tau += 1
                     rā, māhina = r, m
                 elif 0 < m - māhina:
