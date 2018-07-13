@@ -13,7 +13,7 @@ The Hansard volumes come in three main digital formats deriving from three diffe
 The style of writing in the Hansard reports up to volume 409 (28 February 1977) is often in a narrative format in English and does not always directly quote everything that each MP said in parliament, whereas every record from volume 410 onwards only records direct quotations of what each speaker said. It is possible (perhaps a Hansard expert could better clarify) that te reo Māori was spoken on various occasions but the intent of the speech was only recorded in English narrative.
 For the most part letters and words have been interpreted correctly by the OCR program.
 However the OCR scans are not perfect.
-There are frequent OCR mistakes resulting in many incorrectly spelled words which reduce the overall quality of the digital text, especially in the earlier volumes. 
+There are frequent OCR mistakes resulting in many incorrectly spelled words which reduce the overall quality of the digital text, especially in the earlier volumes. HathiTrust provides (slow) online access to these volumes. A copy of the HathiTrust OCR scans can also be downloaded from onedrive [here](https://1drv.ms/f/s!AutNgpEydmJiig1laQ2-SSoCDlyG).
 2. Volumes 483 - 605 between 1987 - 2002 are PDFs produced from computer word processing software.
 The PDFs are available from a public [Google Drive folder](https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CRGZkMWNf).
 The Hansard reports also begin using macronised kupu from 1994 onwards (volume 539).
