@@ -15,7 +15,7 @@ For the most part letters and words have been interpreted correctly by the OCR p
 However the OCR scans are not perfect.
 There are frequent OCR mistakes resulting in many incorrectly spelled words which reduce the overall quality of the digital text, especially in the earlier volumes. HathiTrust provides (slow) online access to these volumes. A copy of the HathiTrust OCR scans can also be downloaded from onedrive [here](https://1drv.ms/f/s!AutNgpEydmJiig1laQ2-SSoCDlyG).
 2. Volumes 483 - 605 between 1987 - 2002 are PDFs produced from computer word processing software.
-The PDFs are available from a public [Google Drive folder](https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CRGZkMWNf).
+The PDFs are available from a public [Google Drive folder](https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CRGZkMWNfeXoybmc).
 The Hansard reports also begin using macronised kupu from 1994 onwards (volume 539).
 3. All daily debates from 2003 onwards can be accessed online as HTML formatted webpages [here](https://www.parliament.nz/en/pb/hansard-debates/rhr/). Volume compilations can also be downloaded as PDFs from another Google Drive folder [here](https://drive.google.com/drive/folders/0B1Iwfzv-Mt3CWWN5ZVEyQVYyNWM).
 
